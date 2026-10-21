@@ -35,8 +35,8 @@ Inputs: `build-artifact` (default true; false for the starter), `deploy-enabled`
 
 What the workflow does, in order: checks out the tools, `check-site-paths.sh` on the caller, actionlint, PHP and
 Node, Composer install (dev), Pint, Pest, Composer install (production, root and theme), npm ci, token check, build, assemble and check
-the artifact, and on a push to `main` (production) or `develop` (staging) with `DEPLOY_ENABLED` true: rsync to a new release directory
-and `activate-release.sh` over one SSH connection.
+the artifact, and on a push to `main` (production) or `develop` (staging) with `DEPLOY_ENABLED` true: rsync to a new release directory,
+then `activate-release.sh` as two execs on one SSH connection (`activate`, then `post`), each logging its duration.
 
 ## Tools (`bin/deploy`)
 

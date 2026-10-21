@@ -36,6 +36,7 @@ case "\$*" in
   *language*) [ -f "$T/php83-hang-lang" ] && exec sleep 60 ;;
   *"option get WPLANG"*) printf '%s' "\${PKDE_TEST_WPLANG:-}" ;;
   *"plugin is-active w3-total-cache"*) [ -f "$T/w3tc-active" ] || exit 1 ;;
+  *"cli has-command acorn"*) [ -f "$T/acorn-yes" ] || exit 1 ;;
   *"option get pgcache.prime.sitemap"*) [ -f "$T/w3tc-sitemap" ] && printf '%s\n' "https://example.com/sitemap_index.xml" ;;
   *pgcache_prime*) [ -f "$T/w3tc-prime-hang" ] && exec sleep 60; [ -f "$T/w3tc-prime-slow" ] && sleep 3 ;;
 esac
@@ -240,7 +241,7 @@ check "finished in well under the stub's 60s hang (took ${took}s)" "[ $took -lt 
 check "WARN names each timed-out flush" "grep -q 'WARN: wp cache flush timed out after 2s' $T/s11.log && grep -q 'WARN: wp rewrite flush timed out after 2s' $T/s11.log"
 check "the release is live and the Asset Cache block was re-asserted" "[ \"\$(readlink $BASE/current)\" = $BASE/releases/R44 ] && grep -q '# BEGIN Asset Cache' $BASE/shared/.htaccess"
 check "the prune ran (3 releases kept)" "[ \$(ls $BASE/releases | wc -l) -eq 3 ]"
-check "step lines print in order: htaccess, prune, then the flushes" "[ \$(grep -n 'Checking the shared .htaccess blocks\|Pruning old releases\|Running: wp cache flush\|Running: wp rewrite flush' $T/s11.log | cut -d: -f1 | tr '\n' ' ' | awk '{print (\$1<\$2 && \$2<\$3 && \$3<\$4) ? \"ordered\" : \"wrong\"}') = ordered ]"
+check "step lines print in order: htaccess, prune, then the flushes" "[ \$(grep -n 'Checking the shared .htaccess blocks\|pruning old releases\|Running: wp cache flush\|Running: wp rewrite flush' $T/s11.log | cut -d: -f1 | tr '\n' ' ' | awk '{print (\$1<\$2 && \$2<\$3 && \$3<\$4) ? \"ordered\" : \"wrong\"}') = ordered ]"
 : > $T/php83.log; mkrelease R45
 bash $S $BASE R45 3 >$T/s11b.log 2>&1; rc=$?
 check "a normal run (no hang): exit 0, both flushes ran, no timeout warning" "[ $rc -eq 0 ] && grep -q 'wp cache flush' $T/php83.log && grep -q 'wp rewrite flush' $T/php83.log && ! grep -q 'timed out' $T/s11b.log"
@@ -306,6 +307,49 @@ check "the default priming bound is 240s" "grep -q 'Running: wp w3-total-cache p
 mkrelease W9; : > $T/php83.log
 CACHE_WARM_TIMEOUT='5;x' bash $S $BASE W9 5 >$T/s13i.log 2>&1
 check "an odd CACHE_WARM_TIMEOUT warns and primes nothing" "! grep -q 'pgcache_prime' $T/php83.log && grep -q 'CACHE_WARM_TIMEOUT must be a number' $T/s13i.log"
+BASE=$OLD_BASE
+
+echo "=== Scenario 14: two execs (activate, then post), a prune that moves releases to .trash, acorn optimize, durations ==="
+OLD_BASE=$BASE; BASE=$T/deploy/split; mkdir -p $BASE/shared; cp $OLD_BASE/shared/.env $BASE/shared/.env
+for r in A1 A2 A3 A4 A5 A6; do mkrelease $r; touch -d "2020-01-0${r#A} 00:00" $BASE/releases/$r 2>/dev/null || true; done
+: > $T/php83.log
+bash $S $BASE A6 3 activate >$T/s14a.log 2>&1; rc=$?
+check "activate: exit 0, the release is live, and no WP-CLI command ran" "[ $rc -eq 0 ] && [ \"\$(readlink $BASE/current)\" = $BASE/releases/A6 ] && [ ! -s $T/php83.log ] && ! grep -q 'Running: wp' $T/s14a.log"
+check "activate: says the post part is the next exec and prints its own duration" "grep -q 'the post part' $T/s14a.log && grep -q \"Exec 'activate' finished after [0-9]*s\" $T/s14a.log"
+check "activate: the old releases were moved to .trash, not deleted in line (3 kept)" "[ \$(ls $BASE/releases | wc -l) -eq 3 ] && grep -q 'moved to .trash' $T/s14a.log"
+check "activate does not start the clean-up (that is the post part's last step)" "! grep -q 'Deleting the pruned releases' $T/s14a.log"
+: > $T/php83.log
+bash $S $BASE A6 3 post >$T/s14b.log 2>&1; rc=$?
+check "post: exit 0; the flushes ran; the activation and .htaccess work did NOT run again" "[ $rc -eq 0 ] && grep -q 'wp cache flush' $T/php83.log && grep -q 'wp rewrite flush' $T/php83.log && ! grep -q 'Activated release' $T/s14b.log && ! grep -q 'Checking the shared .htaccess blocks' $T/s14b.log"
+check "post: prints its own duration and starts the background clean-up" "grep -q \"Exec 'post' finished after [0-9]*s\" $T/s14b.log && grep -q 'Deleting the pruned releases in the background' $T/s14b.log"
+for i in 1 2 3 4 5 6 7 8 9 10; do [ -z "$(ls -A $BASE/.trash 2>/dev/null)" ] && [ ! -d $BASE/.trash.lock ] && break; sleep 0.5; done
+check "the clean-up finishes: .trash is empty and the lock is gone" "[ -z \"\$(ls -A $BASE/.trash)\" ] && [ ! -d $BASE/.trash.lock ]"
+mkrelease A7; : > $T/php83.log
+bash $S $BASE A7 3 post >$T/s14c.log 2>&1
+check "post on a release that is not the live one is skipped with a WARN" "[ ! -s $T/php83.log ] && grep -q 'does not point at release A7' $T/s14c.log"
+ln -sfn $BASE/releases/A6 $BASE/current
+bash $S $BASE A6 3 bogus >$T/s14d.log 2>&1; rc=$?
+check "an unknown mode exits 2" "[ $rc -eq 2 ] && grep -q 'must be all, activate or post' $T/s14d.log"
+touch $T/acorn-yes; mkrelease A8; : > $T/php83.log
+bash $S $BASE A8 3 >$T/s14e.log 2>&1
+check "acorn present: has-command acorn is asked and acorn optimize runs AFTER the flushes" "grep -q 'cli has-command acorn' $T/php83.log && [ \$(grep -n 'rewrite flush\|acorn optimize' $T/php83.log | cut -d: -f1 | tr '\n' ' ' | awk '{print (\$1<\$2) ? \"ordered\" : \"wrong\"}') = ordered ]"
+rm -f $T/acorn-yes; mkrelease A9; : > $T/php83.log
+bash $S $BASE A9 3 >$T/s14f.log 2>&1
+check "acorn absent: acorn optimize does not run" "grep -q 'cli has-command acorn' $T/php83.log && ! grep -q 'acorn optimize' $T/php83.log"
+# a slow delete must not hold the exec open: a stub rm that sleeps on .trash paths
+for r in B1 B2 B3 B4; do mkrelease $r; touch -d "2019-01-0${r#B} 00:00" $BASE/releases/$r 2>/dev/null || true; done
+cat > $T/bin/rm <<RMSTUB
+#!/bin/sh
+case "\$*" in *.trash*) sleep 4 ;; esac
+exec /bin/rm "\$@"
+RMSTUB
+chmod +x $T/bin/rm; mkrelease B5; : > $T/php83.log
+start=$(date +%s); bash $S $BASE B5 2 >$T/s14g.log 2>&1; rc=$?; took=$(( $(date +%s) - start ))
+check "a slow delete does not block: exit 0 in ${took}s (< 4s) while .trash still holds releases" "[ $rc -eq 0 ] && [ $took -lt 4 ] && [ -n \"\$(ls -A $BASE/.trash)\" ]"
+for i in $(seq 1 30); do [ -z "$(ls -A $BASE/.trash 2>/dev/null)" ] && break; sleep 0.5; done
+rm -f $T/bin/rm
+check "...and the background delete finishes by itself" "[ -z \"\$(ls -A $BASE/.trash)\" ]"
+check "'all' prints one duration line for the whole run" "grep -q \"Exec 'all' finished after [0-9]*s\" $T/s14g.log"
 BASE=$OLD_BASE
 
 echo; echo "RESULT: $pass passed, $fail failed"; exit $fail

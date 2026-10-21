@@ -198,4 +198,17 @@ jobs:
           retry "Creating the release directory" ssh "${SSH_OPTS[@]}" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p $DEPLOY_PATH/releases/$release"
           retry "rsync of the build" rsync -az --delete -e "ssh ${SSH_OPTS[*]} -p $SSH_PORT" dist/ "$SSH_USER@$SSH_HOST:$DEPLOY_PATH/releases/$release/"
           retry "Copying activate-release.sh" scp "${SSH_OPTS[@]}" -P "$SSH_PORT" "$TOOLS/bin/deploy/activate-release.sh" "$SSH_USER@$SSH_HOST:$DEPLOY_PATH/activate-release.sh"
-          ssh "${SSH_OPTS[@]}" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "bash $DEPLOY_PATH/activate-release.sh $DEPLOY_PATH $release 5"
+          # Two remote execs on the SAME connection (the ControlMaster above): the activation proper, then the post steps (flushes,
+          # acorn optimize, cache warm-up, languages, background clean-up of pruned releases). 20i's gateway seems to close one exec
+          # after about 5 to 6 minutes; each exec stays short, and each one's duration is logged so a drop shows which side it hit.
+          t_activate=$(date +%s)
+          ssh "${SSH_OPTS[@]}" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "bash $DEPLOY_PATH/activate-release.sh $DEPLOY_PATH $release 5 activate"
+          echo "Activation exec took $(( $(date +%s) - t_activate ))s"
+          # The release is live after the first exec, so a failure here warns instead of failing the deploy: the post steps can be
+          # re-run by hand (`activate-release.sh <base> <release> 5 post`).
+          t_post=$(date +%s)
+          if ssh "${SSH_OPTS[@]}" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "bash $DEPLOY_PATH/activate-release.sh $DEPLOY_PATH $release 5 post"; then
+            echo "Post-steps exec took $(( $(date +%s) - t_post ))s"
+          else
+            echo "::warning::The post-steps exec failed after $(( $(date +%s) - t_post ))s; release $release is live. Re-run: bash $DEPLOY_PATH/activate-release.sh $DEPLOY_PATH $release 5 post"
+          fi

@@ -73,6 +73,8 @@ cp "$REPO_ROOT/bin/deploy/retry.sh" "$T/work/bin/deploy/retry.sh"
 cat > "$T/work/bin/deploy/activate-release.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "activated $*" >> "$(dirname "$0")/activated.log"
+case "$*" in *" post") [ -f "$(dirname "$0")/fail-post" ] && exit 7 ;; esac
+exit 0
 EOF
 echo payload > "$T/work/dist/index.php"
 
@@ -86,11 +88,17 @@ rc=$?
 echo "=== deploy step against a local sshd ==="
 check "the step exits 0" "[ $rc -eq 0 ] || { tail -20 '$T/step.log' >&2; false; }"
 check "the payload arrived in a new release directory" "[ \"\$(cat \"$T/server/deploy/releases\"/*/index.php 2>/dev/null)\" = payload ]"
-check "the activation script was copied and called once with the path, the release and 5" "[ \"\$(grep -c '^activated ' \"$T/server/deploy/activated.log\" 2>/dev/null)\" = 1 ] && grep -Eq '^activated .*/deploy [0-9]{14} 5\$' \"$T/server/deploy/activated.log\""
+check "the activation script was copied and called twice (activate, then post) with the path, the release and 5" "[ \"\$(grep -c '^activated ' \"$T/server/deploy/activated.log\" 2>/dev/null)\" = 2 ] && grep -Eq '^activated .*/deploy [0-9]{14} 5 activate\$' \"$T/server/deploy/activated.log\" && grep -Eq '^activated .*/deploy [0-9]{14} 5 post\$' \"$T/server/deploy/activated.log\""
+check "each exec's duration is logged by the step" "grep -q 'Activation exec took [0-9]*s' '$T/step.log' && grep -q 'Post-steps exec took [0-9]*s' '$T/step.log'"
 accepted="$(grep -c 'Accepted publickey' "$T/server/sshd.log")"
-check "the whole step used ONE accepted SSH connection (got $accepted)" "[ \"$accepted\" = 1 ]"
+check "BOTH execs and the whole step used ONE accepted SSH connection (got $accepted)" "[ \"$accepted\" = 1 ]"
 check "no master connection is left running" "! ssh -o ControlPath=~/.ssh/cm-%C -O check -p $PORT $SSH_USER@127.0.0.1 2>/dev/null"
 check "the step multiplexes: ControlMaster=auto, ControlPath ~/.ssh/cm-%C, ControlPersist" "grep -q 'ControlMaster=auto' '$T/step.sh' && grep -q 'ControlPath=~/.ssh/cm-%C' '$T/step.sh' && grep -q 'ControlPersist=' '$T/step.sh'"
+
+# a failing post exec warns and does not fail the deploy (the release is live after the first exec); a failing activate DOES fail it
+touch "$T/server/deploy/fail-post"
+( cd "$T/work" && bash "$T/step.sh" > "$T/step2.log" 2>&1 ); rc2=$?
+check "a failing post exec only warns: the step still exits 0 and names the command to re-run" "[ $rc2 -eq 0 ] && grep -q '::warning::The post-steps exec failed' '$T/step2.log' && grep -q 'activate-release.sh .* post' '$T/step2.log'"
 
 echo "RESULT: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

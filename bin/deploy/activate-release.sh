@@ -45,9 +45,17 @@
 
 set -euo pipefail
 
-BASE="${1:?usage: activate-release.sh <base_path> <release_timestamp> [keep_count]}"
-RELEASE="${2:?usage: activate-release.sh <base_path> <release_timestamp> [keep_count]}"
+BASE="${1:?usage: activate-release.sh <base_path> <release_timestamp> [keep_count] [all|activate|post]}"
+RELEASE="${2:?usage: activate-release.sh <base_path> <release_timestamp> [keep_count] [all|activate|post]}"
 KEEP="${3:-5}"
+# One run does everything ("all", the default, also what a manual rollback uses). The deploy workflow runs it as TWO separate
+# remote execs on the same SSH connection: "activate" (switch, opcache reset, .htaccess, the fast prune) and then "post" (the
+# flushes, acorn optimize, cache warm-up, languages, and starting the background clean-up of the pruned releases). 20i's gateway
+# seems to close ONE exec channel after about 5 to 6 minutes (tcs run 39599779954 dropped at 5 min 36 s, in the silences of an
+# rm -rf on NFS and of wp cache flush); splitting keeps each exec short, and each prints how long it ran.
+MODE="${4:-all}"
+case "$MODE" in all|activate|post) ;; *) echo "ERROR: the fourth argument must be all, activate or post (got '$MODE')" >&2; exit 2 ;; esac
+stage() { echo "[+${SECONDS}s] $*"; }
 
 RELEASE_DIR="$BASE/releases/$RELEASE"
 SHARED_DIR="$BASE/shared"
@@ -64,6 +72,10 @@ echo "WP-CLI: $WP_CLI"
 # `php` on PATH is a much older system default (8.0 here); `php83` is 20i's
 # per-version binary and matches this project's own PHP >=8.3 requirement.
 PHP_BIN="$(command -v php83 || command -v php)"
+
+OPCACHE_PROBE_FILE=""
+finish() { rm -f "${OPCACHE_PROBE_FILE:-}"; echo "Exec '$MODE' finished after ${SECONDS}s"; }
+trap finish EXIT
 
 if [ ! -d "$RELEASE_DIR" ]; then
     echo "ERROR: release dir $RELEASE_DIR not found" >&2
@@ -86,6 +98,8 @@ if [ -L "$CURRENT_LINK" ]; then
         PREV_DIR=""
     fi
 fi
+
+if [ "$MODE" != post ]; then   # ---- the activation part (modes all and activate) ----
 
 # seed_shared_dir <name> [rsync-args...]
 # Creates shared/<name>. If it did not exist yet and the live release has a real
@@ -198,9 +212,6 @@ echo "Activated release $RELEASE -> $CURRENT_LINK"
 # and delete it straight away (an EXIT trap covers every way out). The file also reports which release it runs
 # from, which doubles as a check that the live web server really serves the release just activated.
 # Failure only warns: a deploy must never fail over this.
-OPCACHE_PROBE_FILE=""
-trap 'rm -f "${OPCACHE_PROBE_FILE:-}"' EXIT
-
 reset_web_opcache() {
     local url token answer
     url="$(sed -n 's/^WP_HOME=//p' "$SHARED_DIR/.env" 2>/dev/null | tr -d "\"'\r" | head -1)" || url=""
@@ -319,12 +330,48 @@ EOF
 fi
 
 # --- prune old releases, keep the newest $KEEP ---
-echo "Pruning old releases, keeping the newest $KEEP"
+# Fast: each old release is MOVED into $BASE/.trash (a rename, instant even on NFS) and deleted later in the background by
+# empty_trash, so a slow recursive delete never holds an exec open (one measured rm -rf of a single release was silent for 266 s).
+stage "pruning old releases, keeping the newest $KEEP"
+TRASH="$BASE/.trash"
+mkdir -p "$TRASH"
 cd "$BASE/releases"
 # The release just activated is never pruned, whatever its mtime says (a rollback to an old release, or a smaller KEEP,
 # must not delete the live one, and the flushes below still run from it): keep it plus the newest KEEP-1 others.
-{ ls -1t | grep -vxF -- "$RELEASE" || true; } | tail -n "+$KEEP" | xargs -r -I{} rm -rf -- {}   # grep exits 1 when nothing is left (first deploy)
-echo "Pruned old releases, kept newest $KEEP"
+trash_stamp="$(date +%s)"
+{ ls -1t | grep -vxF -- "$RELEASE" || true; } | tail -n "+$KEEP" | xargs -r -I{} mv -- {} "$TRASH/{}.$trash_stamp"   # grep exits 1 when nothing is left (first deploy)
+stage "pruned old releases (moved to .trash), kept newest $KEEP"
+
+fi   # ---- end of the activation part ----
+
+# Deleting what the prune moved into $BASE/.trash: detached (nohup, no inherited file descriptors, so the SSH channel can close), one
+# at a time (a lock directory, stale after two hours), and never waited for. Called as the last thing the post part does.
+TRASH="$BASE/.trash"
+TRASH_LOCK="$BASE/.trash.lock"
+empty_trash() {
+    [ -d "$TRASH" ] || return 0
+    [ -n "$(ls -A "$TRASH" 2>/dev/null)" ] || return 0
+    if ! mkdir "$TRASH_LOCK" 2>/dev/null; then
+        if [ -n "$(find "$TRASH_LOCK" -maxdepth 0 -mmin +120 2>/dev/null)" ]; then
+            rmdir "$TRASH_LOCK" 2>/dev/null && mkdir "$TRASH_LOCK" 2>/dev/null || { echo "Clean-up of .trash is already running"; return 0; }
+        else
+            echo "Clean-up of .trash is already running"
+            return 0
+        fi
+    fi
+    nohup bash -c 'find "$1" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +; rmdir "$2"' _ "$TRASH" "$TRASH_LOCK" </dev/null >/dev/null 2>&1 &
+    echo "Deleting the pruned releases in the background (.trash)"
+}
+
+if [ "$MODE" = activate ]; then
+    stage "activation part done; the post part (flushes, warm-up, languages) is the next exec"
+    exit 0
+fi
+
+if [ "$MODE" = post ] && [ "$(readlink -f "$CURRENT_LINK" 2>/dev/null)" != "$(readlink -f "$RELEASE_DIR")" ]; then
+    echo "WARN: $CURRENT_LINK does not point at release $RELEASE: the post steps are skipped (they must run from the live release)." >&2
+    exit 0
+fi
 
 # --- cache/rewrite flush: best-effort, bounded, runs LAST, never fails the deploy over this ---
 # Deliberately `rewrite flush` (soft, DB-only: updates the `rewrite_rules`
@@ -378,8 +425,14 @@ run_wp() { # <wp args...>
     return 0
 }
 if [ -f "$WP_CLI" ]; then
+    stage "flushes"
     run_wp cache flush
     run_wp rewrite flush
+
+    # Acorn's own caches (config, events, views) for the new release, when the theme has Acorn: its WP-CLI command exists only then.
+    if wp_run cli has-command acorn >/dev/null 2>&1; then
+        run_wp acorn optimize
+    fi
 
     # Warm the page cache: a release starts with an empty one (web/app/cache is per release), so W3 Total Cache's preloader fetches
     # the first pages of its sitemap now instead of leaving them to the first visitors. Only when W3TC is active AND a preloader
@@ -419,3 +472,6 @@ if [ -f "$WP_CLI" ]; then
 else
     echo "WARN: WP-CLI not found at $WP_CLI -- skipping cache/rewrite flush" >&2
 fi
+
+stage "post steps done"
+empty_trash
