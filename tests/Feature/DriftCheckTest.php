@@ -7,12 +7,12 @@ function pkdeGoodFacts(): array
 {
     return [
         'env' => 'production',
-        'admin_email' => 'office@example.test',
+        'admin_email' => 'office@acme-widgets.co.uk',
         'blogdescription' => 'Quality widgets for everyone',
-        'wordfence' => array_merge(pkde_drift_wordfence_standard(), ['alertEmails' => 'office@example.test']),
+        'wordfence' => array_merge(pkde_drift_wordfence_standard(), ['alertEmails' => 'office@acme-widgets.co.uk']),
         'turnstile' => ['appearance' => 'always', 'login' => '1', 'cf7_all' => '1', 'tested' => 'yes', 'reset' => '', 'keys_present' => true],
         'hide_login' => ['active' => true, 'slug' => 'staff-entrance'],
-        'w3tc' => ['settings' => pkde_w3tc_standard('https://example.test/sitemap_index.xml'), 'reject_cookies' => ['woocommerce_items_in_cart', 'wp_woocommerce_session_', 'other'], 'expected_sitemap' => 'https://client.co.uk/sitemap_index.xml'],
+        'w3tc' => ['settings' => pkde_w3tc_standard('https://example.test/sitemap_index.xml'), 'reject_cookies' => ['woocommerce_items_in_cart', 'wp_woocommerce_session_', 'other'], 'expected_sitemap' => 'https://example.test/sitemap_index.xml'],
         'rankmath' => ['skip' => true, 'connected' => false],
         'woocommerce_active' => true,
         'cf7_forms' => [['id' => 5, 'has_subject' => false, 'subject' => PKDE_DRIFT_SUBJECT, 'mail2_active' => false, 'mail2_subject' => '']],
