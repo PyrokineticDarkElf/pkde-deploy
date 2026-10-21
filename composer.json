@@ -1,0 +1,29 @@
+{
+  "name": "pkde/deploy",
+  "description": "PKDE deploy tools: the 20i deploy scripts, checks and native-block tools. Required with require-dev by a site (never shipped in vendor/); the pipeline itself is the reusable workflow in .github/workflows/deploy.yml.",
+  "type": "library",
+  "license": "GPL-2.0-or-later",
+  "require": {
+    "php": ">=8.3"
+  },
+  "require-dev": {
+    "laravel/pint": "^1.0",
+    "pestphp/pest": "^4.0"
+  },
+  "config": {
+    "sort-packages": true,
+    "allow-plugins": {
+      "pestphp/pest-plugin": true
+    }
+  },
+  "bin": [
+    "bin/deploy/perf-probe.sh",
+    "bin/deploy/prelaunch-audit.sh",
+    "bin/deploy/check-site-paths.sh"
+  ],
+  "scripts": {
+    "lint": "pint --test",
+    "lint:fix": "pint",
+    "test": "pest"
+  }
+}

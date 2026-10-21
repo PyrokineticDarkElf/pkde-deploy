@@ -1,0 +1,6 @@
+# actionlint config. `self-hosted-runner.labels` is how actionlint is told about runner labels its built-in list does not
+# know yet (it is a plain allow-list; it does not mean these runners are self-hosted). ubuntu-26.04 is a GitHub-hosted
+# image that the workflow uses but actionlint 1.7.12 reports as 'unknown'. Remove the entry once actionlint knows it.
+self-hosted-runner:
+  labels:
+    - ubuntu-26.04

@@ -1,0 +1,10 @@
+# The dist archive Composer installs as a site's require-dev: the tools only. The workflow and this repo's own tests and tooling
+# stay out (the workflow is used straight from GitHub by `uses:`).
+/tests export-ignore
+/.github export-ignore
+/.gitattributes export-ignore
+/.gitignore export-ignore
+/phpunit.xml export-ignore
+/pint.json export-ignore
+/composer.lock export-ignore
+/bin/release.sh export-ignore
