@@ -128,8 +128,9 @@ jobs:
         if: env.BUILD == 'true'
         run: composer install --no-dev --optimize-autoloader --no-interaction --no-progress
 
+      # Always, also for the starter: the token check and the Vite build import from the theme's vendor/ (the Sage kit's generator,
+      # JS and CSS), so they cannot run without it.
       - name: Install theme Composer dependencies (Acorn, the kit)
-        if: env.BUILD == 'true'
         run: composer install --no-dev --optimize-autoloader --no-interaction --no-progress
         working-directory: ${{ inputs.theme-dir }}
 
