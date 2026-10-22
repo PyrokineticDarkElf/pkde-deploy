@@ -161,6 +161,28 @@ it('requires Rank Math to be registered: skipped or connected', function () {
     expect(pkdeStatuses($facts))->not->toHaveKey($check);
 });
 
+it('accepts Rank Math or Yoast as the SEO plugin, and keeps the Rank Math registration check for Rank Math only', function () {
+    $check = 'An SEO plugin is active (Rank Math or Yoast)';
+    $without = fn(array $f) => array_values(array_diff($f['active_plugins'], ['seo-by-rank-math']));
+
+    $facts = pkdeGoodFacts();
+    expect(pkdeStatuses($facts)[$check])->toBe('PASS');
+
+    foreach (['wordpress-seo', 'wordpress-seo-premium'] as $yoast) {
+        $facts = pkdeGoodFacts();
+        $facts['active_plugins'] = [...$without($facts), $yoast];
+        $facts['rankmath'] = ['skip' => false, 'connected' => false];
+        $statuses = pkdeStatuses($facts);
+        expect($statuses[$check])->toBe('PASS')
+            ->and($statuses)->not->toHaveKey('Rank Math is registered (registration skipped or account connected)')
+            ->and($statuses)->not->toHaveKey('Plugin seo-by-rank-math active');
+    }
+
+    $facts = pkdeGoodFacts();
+    $facts['active_plugins'] = $without($facts);
+    expect(pkdeStatuses($facts)[$check])->toBe('FAIL');
+});
+
 it('checks Mail (2) only when it is switched on', function () {
     $facts = pkdeGoodFacts();
     $facts['cf7_forms'][0]['mail2_subject'] = 'anything';

@@ -22,6 +22,8 @@ const chromePath = arg('chrome');
 let paths = (arg('paths', '') || '').split(',').filter(Boolean);
 mkdirSync(out, { recursive: true });
 
+process.on('unhandledRejection', (e) => { console.error(`\nFAIL  The audit crashed before it finished: ${(e && e.stack) || e}`); process.exit(1); });
+
 const lines = [];
 let fails = 0;
 const report = (status, check, detail = '') => {
@@ -90,24 +92,34 @@ async function discoverPaths() {
   return [...new Set(found)].slice(0, 8);
 }
 
-const browser = await puppeteer.launch({ executablePath: chromePath, headless: true, args: ['--no-sandbox', '--remote-debugging-port=0'] });
-const html = await headerChecks();
+// A section that cannot run is a FAIL with its reason, never a silent skip: an audit that printed only the header checks must not
+// look like an audit that passed.
+const abort = (what, e) => report('FAIL', `${what} could not run`, String((e && e.message) || e).split('\n')[0]);
+const browser = await puppeteer.launch({ executablePath: chromePath, headless: true, args: ['--no-sandbox', '--remote-debugging-port=0'] }).catch((e) => { abort('Chrome launch', e); return null; });
+const html = await headerChecks().catch((e) => { abort('Header checks', e); return ''; });
+if (!browser) {
+  writeFileSync(join(out, 'summary.txt'), lines.join('\n') + `\n\n${fails} check(s) FAILED\n`);
+  console.log(`\n${fails} check(s) FAILED. Lighthouse, axe and the focus check did NOT run. Reports: ${out}`);
+  process.exit(1);
+}
 paths = await discoverPaths();
 report('INFO', 'Pages audited', paths.join(' '));
 
 // 2. Lighthouse, mobile and desktop, on the home page ----------------------------------------------------------------
 for (const mode of ['mobile', 'desktop']) {
-  const port = Number(new URL(browser.wsEndpoint()).port);
-  const r = await lighthouse(base + '/', { port, output: ['json', 'html'], logLevel: 'error', onlyCategories: ['performance', 'accessibility', 'best-practices', 'seo'] }, mode === 'desktop' ? desktopConfig : undefined);
-  writeFileSync(join(out, `lighthouse-${mode}.html`), r.report[1]);
-  writeFileSync(join(out, `lighthouse-${mode}.json`), r.report[0]);
-  const s = Object.fromEntries(Object.entries(r.lhr.categories).map(([k, v]) => [k, Math.round(v.score * 100)]));
-  const lcp = r.lhr.audits['largest-contentful-paint']?.displayValue || '-';
-  report('INFO', `Lighthouse ${mode}`, `performance ${s.performance}, accessibility ${s.accessibility}, best-practices ${s['best-practices']}, seo ${s.seo}, LCP ${lcp}`);
-  report(s.accessibility >= 90 ? 'PASS' : 'FAIL', `Lighthouse ${mode} accessibility >= 90`, `got ${s.accessibility}`);
-  report(s['best-practices'] >= 90 ? 'PASS' : 'FAIL', `Lighthouse ${mode} best practices >= 90`, `got ${s['best-practices']}`);
-  // A staging site is noindex on purpose, which Lighthouse scores down in SEO.
-  report(s.seo >= 90 || expectEnv === 'staging' ? (s.seo >= 90 ? 'PASS' : 'INFO') : 'FAIL', `Lighthouse ${mode} SEO >= 90`, `got ${s.seo}${expectEnv === 'staging' && s.seo < 90 ? ' (noindex on staging is expected)' : ''}`);
+  try {
+    const port = Number(new URL(browser.wsEndpoint()).port);
+    const r = await lighthouse(base + '/', { port, output: ['json', 'html'], logLevel: 'error', onlyCategories: ['performance', 'accessibility', 'best-practices', 'seo'] }, mode === 'desktop' ? desktopConfig : undefined);
+    writeFileSync(join(out, `lighthouse-${mode}.html`), r.report[1]);
+    writeFileSync(join(out, `lighthouse-${mode}.json`), r.report[0]);
+    const s = Object.fromEntries(Object.entries(r.lhr.categories).map(([k, v]) => [k, Math.round(v.score * 100)]));
+    const lcp = r.lhr.audits['largest-contentful-paint']?.displayValue || '-';
+    report('INFO', `Lighthouse ${mode}`, `performance ${s.performance}, accessibility ${s.accessibility}, best-practices ${s['best-practices']}, seo ${s.seo}, LCP ${lcp}`);
+    report(s.accessibility >= 90 ? 'PASS' : 'FAIL', `Lighthouse ${mode} accessibility >= 90`, `got ${s.accessibility}`);
+    report(s['best-practices'] >= 90 ? 'PASS' : 'FAIL', `Lighthouse ${mode} best practices >= 90`, `got ${s['best-practices']}`);
+    // A staging site is noindex on purpose, which Lighthouse scores down in SEO.
+    report(s.seo >= 90 || expectEnv === 'staging' ? (s.seo >= 90 ? 'PASS' : 'INFO') : 'FAIL', `Lighthouse ${mode} SEO >= 90`, `got ${s.seo}${expectEnv === 'staging' && s.seo < 90 ? ' (noindex on staging is expected)' : ''}`);
+  } catch (e) { abort(`Lighthouse ${mode}`, e); }
 }
 
 // 3. axe-core on each page, and 4. the keyboard focus check -----------------------------------------------------------
@@ -119,44 +131,46 @@ const hasIndicator = (el) => {
 
 for (const path of paths) {
   const page = await browser.newPage();
-  await page.setViewport({ width: 1280, height: 900 });
-  await page.goto(base + path, { waitUntil: 'networkidle2', timeout: 60000 });
+  try {
+    await page.setViewport({ width: 1280, height: 900 });
+    await page.goto(base + path, { waitUntil: 'networkidle2', timeout: 60000 });
 
-  await page.evaluate(axe.source);
-  const result = await page.evaluate(() => axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa', 'best-practice'] } }));
-  writeFileSync(join(out, `axe-${path.replace(/\W+/g, '_') || 'home'}.json`), JSON.stringify(result.violations, null, 2));
-  const blocking = result.violations.filter((v) => ['serious', 'critical'].includes(v.impact));
-  report(blocking.length ? 'FAIL' : 'PASS', `axe ${path}: no serious or critical violations`, blocking.map((v) => `${v.id} (${v.nodes.length})`).join(', '));
-  const minor = result.violations.filter((v) => !['serious', 'critical'].includes(v.impact));
-  if (minor.length) report('INFO', `axe ${path}: minor/moderate`, minor.map((v) => `${v.id} (${v.nodes.length})`).join(', '));
+    await page.evaluate(axe.source);
+    const result = await page.evaluate(() => axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa', 'best-practice'] } }));
+    writeFileSync(join(out, `axe-${path.replace(/\W+/g, '_') || 'home'}.json`), JSON.stringify(result.violations, null, 2));
+    const blocking = result.violations.filter((v) => ['serious', 'critical'].includes(v.impact));
+    report(blocking.length ? 'FAIL' : 'PASS', `axe ${path}: no serious or critical violations`, blocking.map((v) => `${v.id} (${v.nodes.length})`).join(', '));
+    const minor = result.violations.filter((v) => !['serious', 'critical'].includes(v.impact));
+    if (minor.length) report('INFO', `axe ${path}: minor/moderate`, minor.map((v) => `${v.id} (${v.nodes.length})`).join(', '));
 
-  // Tab through the page: every focus stop needs a visible indicator, and focus must not get stuck.
-  const seen = [];
-  for (let i = 0; i < 80; i++) {
-    await page.keyboard.press('Tab');
-    const stop = await page.evaluate((fn) => {
-      const el = document.activeElement;
-      if (!el || el === document.body) return null;
-      const f = new Function('el', `return (${fn})(el)`);
-      const focused = f(el);
-      el.blur();
-      const blurred = f(el);
-      el.focus();
-      const same = JSON.stringify(focused) === JSON.stringify(blurred);
-      const r = el.getBoundingClientRect();
-      // A unique key per element (its position in the DOM), so two plain links are not mistaken for one stop.
-      const path = [];
-      for (let n = el; n && n.parentElement; n = n.parentElement) path.push(Array.prototype.indexOf.call(n.parentElement.children, n));
-      return { key: path.join('.'), id: el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (el.getAttribute('aria-label') ? `[${el.getAttribute('aria-label')}]` : (el.textContent || '').trim().slice(0, 24) ? `[${(el.textContent || '').trim().slice(0, 24)}]` : ''), noIndicator: same && !focused.outline, visible: r.width > 0 && r.height > 0 };
-    }, hasIndicator.toString());
-    if (!stop) break;
-    if (seen.some((s) => s.key === stop.key)) break; // focus came back round: the page's tab cycle is complete
-    seen.push(stop);
-  }
-  const bad = seen.filter((s) => s.noIndicator && s.visible);
-  report(seen.length > 0 ? 'PASS' : 'FAIL', `Focus ${path}: page has keyboard focus stops`, `${seen.length} tabbable stops reached`);
-  report(bad.length ? 'FAIL' : 'PASS', `Focus ${path}: every focus stop shows a visible indicator`, bad.slice(0, 10).map((b) => b.id).join(', '));
-  await page.close();
+    // Tab through the page: every focus stop needs a visible indicator, and focus must not get stuck.
+    const seen = [];
+    for (let i = 0; i < 80; i++) {
+      await page.keyboard.press('Tab');
+      const stop = await page.evaluate((fn) => {
+        const el = document.activeElement;
+        if (!el || el === document.body) return null;
+        const f = new Function('el', `return (${fn})(el)`);
+        const focused = f(el);
+        el.blur();
+        const blurred = f(el);
+        el.focus();
+        const same = JSON.stringify(focused) === JSON.stringify(blurred);
+        const r = el.getBoundingClientRect();
+        // A unique key per element (its position in the DOM), so two plain links are not mistaken for one stop.
+        const path = [];
+        for (let n = el; n && n.parentElement; n = n.parentElement) path.push(Array.prototype.indexOf.call(n.parentElement.children, n));
+        return { key: path.join('.'), id: el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (el.getAttribute('aria-label') ? `[${el.getAttribute('aria-label')}]` : (el.textContent || '').trim().slice(0, 24) ? `[${(el.textContent || '').trim().slice(0, 24)}]` : ''), noIndicator: same && !focused.outline, visible: r.width > 0 && r.height > 0 };
+      }, hasIndicator.toString());
+      if (!stop) break;
+      if (seen.some((s) => s.key === stop.key)) break; // focus came back round: the page's tab cycle is complete
+      seen.push(stop);
+    }
+    const bad = seen.filter((s) => s.noIndicator && s.visible);
+    report(seen.length > 0 ? 'PASS' : 'FAIL', `Focus ${path}: page has keyboard focus stops`, `${seen.length} tabbable stops reached`);
+    report(bad.length ? 'FAIL' : 'PASS', `Focus ${path}: every focus stop shows a visible indicator`, bad.slice(0, 10).map((b) => b.id).join(', '));
+  } catch (e) { abort(`axe and focus check for ${path}`, e); }
+  await page.close().catch(() => {});
 }
 
 await browser.close();

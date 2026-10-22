@@ -65,3 +65,10 @@ mkdir -p "$OUT" || exit 2
 
 echo "Auditing $URL (expect: $EXPECT), report folder: $OUT"
 cd "$TOOLS" && node audit.mjs --url "$URL" --out "$OUT" --expect "$EXPECT" --chrome "$CHROME" ${PATHS:+--paths "$PATHS"}
+RC=$?
+# Exit 0 = all passed, 1 = a check failed; anything else (or no summary.txt) means the audit did not finish.
+if [ "$RC" -gt 1 ] || [ ! -f "$OUT/summary.txt" ]; then
+    echo "FAIL  The audit did not finish (exit $RC, no summary written): Lighthouse, axe and the focus check may not have run." >&2
+    exit 1
+fi
+exit "$RC"

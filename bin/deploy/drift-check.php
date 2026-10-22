@@ -54,7 +54,13 @@ function pkde_drift_wordfence_standard(): array
 /** Plugins every site is expected to have active (slug = plugin directory). */
 function pkde_drift_core_plugins(): array
 {
-    return ['wordfence', 'seo-by-rank-math', 'ewww-image-optimizer', 'w3-total-cache', 'speculation-rules'];
+    return ['wordfence', 'ewww-image-optimizer', 'w3-total-cache', 'speculation-rules'];
+}
+
+/** The SEO plugins a site may use: exactly one of these is expected (Rank Math is the template's default; Yoast, free or premium, is accepted). */
+function pkde_drift_seo_plugins(): array
+{
+    return ['seo-by-rank-math', 'wordpress-seo', 'wordpress-seo-premium'];
 }
 
 function pkde_drift_is_placeholder_email(string $email): bool
@@ -162,6 +168,7 @@ function pkde_drift_evaluate(array $f): array
 
     // Plugins
     $active = (array) ($f['active_plugins'] ?? []);
+    $cmp('An SEO plugin is active (Rank Math or Yoast)', array_intersect(pkde_drift_seo_plugins(), $active) !== [], 'none of ' . implode(', ', pkde_drift_seo_plugins()) . ' is active');
     $expected = pkde_drift_core_plugins();
     if ($f['cf7_active'] ?? false) {
         $expected[] = 'simple-cloudflare-turnstile';
@@ -181,7 +188,7 @@ function pkde_drift_evaluate(array $f): array
         }
         $cmp("Plugin $slugName active", in_array($slugName, $active, true), 'not active', in_array($slugName, ['simple-cloudflare-turnstile', 'post-smtp', 'wps-hide-login'], true));
     }
-    $extra = array_values(array_diff($active, $expected, ['contact-form-7', 'woocommerce', 'wps-hide-login', 'post-smtp', 'simple-cloudflare-turnstile']));
+    $extra = array_values(array_diff($active, $expected, pkde_drift_seo_plugins(), ['contact-form-7', 'woocommerce', 'wps-hide-login', 'post-smtp', 'simple-cloudflare-turnstile']));
     if ($extra !== []) {
         $add('INFO', 'Other active plugins', implode(', ', $extra));
     }
