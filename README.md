@@ -40,7 +40,7 @@ then `activate-release.sh` as two execs on one SSH connection (`activate`, then 
 
 ## Tools (`bin/deploy`)
 
-`activate-release.sh` (runs on the server), `assemble-artifact.sh` and `check-artifact.sh`, `retry.sh`, `rcpt-probe.py`, `drift-check.php`
+`activate-release.sh` (runs on the server), `assemble-artifact.sh` and `check-artifact.sh`, `composer-audit.sh` (the workflow runs it on the root and theme lock files: fails on a high, critical or unrated advisory; accept one deliberately with `config.audit.ignore` in that `composer.json`), `retry.sh`, `rcpt-probe.py`, `drift-check.php`
 with `w3tc-standard.php` and `w3tc-settings.php`, `perf-probe.php` and `perf-probe.sh`, `wp.sh`, `prelaunch-audit.sh`/`.mjs`,
 `wordfence-cloudflare.sh`, `safe-push-main.sh`, `sync-template-adrs.sh`, `check-site-paths.sh`, and `native/` (page-conversion tools).
 `assemble-artifact.sh` ships `drift-check.php`, the W3TC files, `perf-probe.*` and `wp.sh` into every release (outside the docroot); the guide

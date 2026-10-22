@@ -118,6 +118,10 @@ jobs:
       - name: Install root Composer dependencies (with dev tools)
         run: composer install --no-interaction --no-progress
 
+      # The root and theme composer.lock (shipped packages only). Fails on a high, critical or unrated advisory; see the script.
+      - name: Audit root Composer dependencies
+        run: bash .pkde-deploy/bin/deploy/composer-audit.sh .
+
       - name: Lint (Pint)
         run: composer lint
 
@@ -132,6 +136,10 @@ jobs:
       # JS and CSS), so they cannot run without it.
       - name: Install theme Composer dependencies (Acorn, the kit)
         run: composer install --no-dev --optimize-autoloader --no-interaction --no-progress
+        working-directory: ${{ inputs.theme-dir }}
+
+      - name: Audit theme Composer dependencies (Acorn, the kit)
+        run: bash "$GITHUB_WORKSPACE/.pkde-deploy/bin/deploy/composer-audit.sh" .
         working-directory: ${{ inputs.theme-dir }}
 
       - name: Install theme npm dependencies

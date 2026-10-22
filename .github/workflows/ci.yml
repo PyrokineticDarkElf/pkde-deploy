@@ -46,6 +46,7 @@ jobs:
           bash tests/deploy/rcpt-probe.test.sh
           bash tests/deploy/safe-push-main.test.sh
           bash tests/deploy/retry.test.sh
+          bash tests/deploy/composer-audit.test.sh
           bash tests/deploy/sync-template-adrs.test.sh
           bash tests/deploy/check-site-paths.test.sh
           bash tests/deploy/perf-probe.test.sh
