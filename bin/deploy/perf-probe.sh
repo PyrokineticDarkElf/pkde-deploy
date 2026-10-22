@@ -17,6 +17,11 @@
 #   PERF_PROBE_BASIC_AUTH          user:password for a staging gate; handed to curl on stdin, never on its command line
 #   PERF_PROBE_ALLOW_PRODUCTION=1  required when WP_ENV is production (the probe is meant for staging)
 #
+# A deleted PHP file can still answer for a while: on 20i OPcache revalidates only every ~10 s (validate_timestamps) and the NFS attribute
+# cache adds to that, so the probe file may keep answering a request that carries its token for about 10 s after it is removed (tcs saw a
+# deleted file still callable a second later). That is why the plugin answers only a request with the random token, prints nothing
+# sensitive, and why ANY temporary PHP file put in a docroot must do the same.
+#
 # The OPcache "misses+" column is the misses added since the previous probed request: the first request after installing also
 # compiles the probe itself, so read the later rows.
 

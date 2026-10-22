@@ -18,6 +18,10 @@
  *   - outbound HTTP calls (host, status, ms);
  *   - memory_limit, the peak, and the size of the autoloaded options.
  *
+ * A deleted PHP file can keep answering for about 10 s on 20i (OPcache validate_timestamps is 10 s and the NFS attribute cache adds to it),
+ * so this file is token-gated and prints only timings and counts, never a secret, a path of a user or a credential: the same rule applies to
+ * any temporary PHP file in a docroot.
+ *
  * Outside WordPress (the Pest test, or `php perf-probe.php report <dir>` from the runner) only the pure functions below load.
  * No secrets, and nothing is written anywhere.
  */

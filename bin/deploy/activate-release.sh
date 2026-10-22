@@ -209,7 +209,8 @@ echo "Activated release $RELEASE -> $CURRENT_LINK"
 # code (bp saw generator 7.1.2 while core on disk was 7.1.3). A My20i PHP restart did not clear it; one
 # opcache_reset() run BY THE WEB POOL did. WP-CLI cannot do it: the CLI has its own separate opcache.
 # So: drop a one-time, unguessably named PHP file into the new release, request it over HTTPS via WP_HOME,
-# and delete it straight away (an EXIT trap covers every way out). The file also reports which release it runs
+# and delete it straight away (an EXIT trap covers every way out; a deleted PHP file can still answer for about 10 s on 20i, OPcache
+# revalidates every 10 s on top of the NFS attribute cache, which is harmless here: the name is a random 128-bit token and it prints one line). The file also reports which release it runs
 # from, which doubles as a check that the live web server really serves the release just activated.
 # Failure only warns: a deploy must never fail over this.
 reset_web_opcache() {

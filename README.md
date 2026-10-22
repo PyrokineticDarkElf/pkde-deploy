@@ -48,6 +48,10 @@ in the starter explains each. A site that wants them locally requires this packa
 pkde/deploy:<tag>`), so they are in `vendor/pkde/deploy/bin/deploy/` and never in the shipped `vendor/` (the production install runs
 `--no-dev`). The native tools use the current directory as the site root (or `PKDE_SITE_ROOT`).
 
+## Temporary PHP files in a docroot
+
+A PHP file deleted from a 20i docroot can keep answering for about 10 seconds: OPcache's `validate_timestamps` revalidates every 10 s and the NFS attribute cache adds to that. So any temporary PHP file (the performance probe's mu-plugin, the OPcache reset probe) must be gated by a random token, must print nothing sensitive, and must not be trusted to be gone the moment `rm` returns.
+
 ## Develop and release
 
 * `composer install`, `composer lint`, `composer test`; the shell tests are `bash tests/deploy/<name>.test.sh`, the Python ones
