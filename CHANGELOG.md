@@ -4,6 +4,10 @@
 
 - `drift-check.php`: new check "Post SMTP configured and ready" when Post SMTP is active: transport `smtp`, a sender (From) address, a host and a password are all present (values are never printed). A FAIL names what is missing (for example "set SMTP_FROM"); SKIP on a development stack. Pest cases cover each missing piece.
 
+## 2026.10.23.3
+
+- `drift-check.php`: new check "Post SMTP configured and ready" when Post SMTP is active. It fails unless the **active transport class** is `PostmanSmtpModuleTransport` (Post SMTP falls back to its Default transport, the web server's local mail, when the SMTP one is not configured and ready, whatever the stored transport says), the stored transport is smtp, and a sender (From) address, an envelope sender, a host and a password are present. A FAIL names what is missing (for example "set SMTP_FROM"); values are never printed; SKIP on a development stack. Pest cases cover each missing piece and the Default-transport fallback.
+
 ## 2026.10.23.2
 
 - `fingerprint.sh compare-sites` normalises what only one environment has by design, so production against staging no longer fails on it: a CookieYes consent cookie (every optional category off), the consent banners and widgets of CookieYes, Complianz, Cookiebot, OneTrust, Borlabs and Termly, the Google Tag Manager iframe and noscript are hidden (display:none, so DOM paths do not shift), and `<picture><source><img>` is compared as the bare `<img>` (EWWW WebP wrappers where staging lacks the .webp files). `--raw` turns this off; `capture --normalise` does the same for a single capture. A staging site behind HTTP Basic auth is read with `FINGERPRINT_AUTH=user:pass` in the environment, never on the command line. A test runs real Chrome against local fixture servers (skipped where Chrome or the tools are missing).

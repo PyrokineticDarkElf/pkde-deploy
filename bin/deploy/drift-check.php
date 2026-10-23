@@ -198,7 +198,12 @@ function pkde_drift_evaluate(array $f): array
         } else {
             $transport = (string) ($ps['transport'] ?? '');
             $transport === 'smtp' || $missing[] = 'transport is ' . ($transport === '' ? 'unset' : "'$transport'") . ', not smtp';
+            // The class that really sends: Post SMTP falls back to its Default transport (the web server's local mail) when the SMTP
+            // one is not configured and ready, whatever the stored transport says.
+            $sending = (string) ($ps['active_transport'] ?? '');
+            $sending === 'PostmanSmtpModuleTransport' || $missing[] = 'the active transport is ' . ($sending === '' ? 'unknown' : $sending) . ', not PostmanSmtpModuleTransport (mail would not go through SMTP)';
             empty($ps['sender_set']) && $missing[] = 'no sender (From) address: set SMTP_FROM';
+            empty($ps['envelope_set']) && $missing[] = 'no envelope sender: SMTP_FROM should fill it';
             empty($ps['host_set']) && $missing[] = 'no SMTP host: set SMTP_HOST';
             empty($ps['password_set']) && $missing[] = 'no SMTP password: set SMTP_PASSWORD';
         }
@@ -281,9 +286,13 @@ function pkde_drift_collect(): array
         'post_smtp' => class_exists('PostmanOptions') ? (function () {
             $o = PostmanOptions::getInstance();
 
+            $active = class_exists('PostmanTransportRegistry') ? PostmanTransportRegistry::getInstance()->getActiveTransport() : null;
+
             return [
                 'transport' => (string) $o->getTransportType(),
+                'active_transport' => $active ? get_class($active) : '',
                 'sender_set' => trim((string) $o->getMessageSenderEmail()) !== '',
+                'envelope_set' => trim((string) $o->getEnvelopeSender()) !== '',
                 'host_set' => trim((string) $o->getHostname()) !== '',
                 'password_set' => (string) $o->getPassword() !== '',
             ];

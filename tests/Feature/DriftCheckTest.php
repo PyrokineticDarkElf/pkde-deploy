@@ -18,7 +18,7 @@ function pkdeGoodFacts(): array
         'cf7_forms' => [['id' => 5, 'has_subject' => false, 'subject' => PKDE_DRIFT_SUBJECT, 'mail2_active' => false, 'mail2_subject' => '']],
         'cf7_active' => true,
         'smtp_host_set' => true,
-        'post_smtp' => ['transport' => 'smtp', 'sender_set' => true, 'host_set' => true, 'password_set' => true],
+        'post_smtp' => ['transport' => 'smtp', 'active_transport' => 'PostmanSmtpModuleTransport', 'sender_set' => true, 'envelope_set' => true, 'host_set' => true, 'password_set' => true],
         'active_plugins' => ['wordfence', 'seo-by-rank-math', 'ewww-image-optimizer', 'w3-total-cache', 'speculation-rules', 'wps-hide-login', 'simple-cloudflare-turnstile', 'contact-form-7', 'post-smtp'],
     ];
 }
@@ -231,6 +231,7 @@ it('requires Post SMTP to be configured and ready, not only active, and never pr
 
     $cases = [
         'sender_set' => 'SMTP_FROM',
+        'envelope_set' => 'envelope',
         'host_set' => 'SMTP_HOST',
         'password_set' => 'SMTP_PASSWORD',
     ];
@@ -246,6 +247,12 @@ it('requires Post SMTP to be configured and ready, not only active, and never pr
     $facts = pkdeGoodFacts();
     $facts['post_smtp']['transport'] = 'default';
     expect(pkdeStatuses($facts)[$check])->toBe('FAIL');
+
+    $facts = pkdeGoodFacts();
+    $facts['post_smtp']['active_transport'] = 'PostmanDefaultModuleTransport';
+    $rows = array_values(array_filter(pkde_drift_evaluate($facts), fn($r) => $r[1] === $check));
+    expect($rows[0][0])->toBe('FAIL')
+        ->and($rows[0][2])->toContain('PostmanDefaultModuleTransport');
 
     $facts = pkdeGoodFacts();
     $facts['post_smtp'] = null;
