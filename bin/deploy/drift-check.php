@@ -149,6 +149,10 @@ function pkde_drift_evaluate(array $f): array
     $hl = $f['hide_login'] ?? [];
     $slug = (string) ($hl['slug'] ?? '');
     $cmp('WPS Hide Login active', ($hl['active'] ?? false) === true, 'plugin is not active', true);
+    // The slug must come from .env (LOGIN_SLUG), the same on staging and production; the value is never printed.
+    if (! empty($hl['active'])) {
+        $cmp('Login slug managed by .env', ! empty($hl['managed']), 'LOGIN_SLUG is not set (or unusable, or the login-slug module is off): the slug is the stored whl_page option and can differ between staging and production; copy production\'s whl_page into LOGIN_SLUG in shared/.env', true);
+    }
     $cmp('WPS Hide Login slug changed from the default', $slug !== '' && $slug !== 'login', $slug === '' ? 'no custom slug set' : 'slug is still the default "login"', true);
 
     // Contact Form 7 forms
@@ -279,7 +283,12 @@ function pkde_drift_collect(): array
             'reset' => get_option('cfturnstile_reset'),
             'keys_present' => $keys,
         ],
-        'hide_login' => ['active' => in_array('wps-hide-login', $active, true), 'slug' => (string) get_option('whl_page')],
+        'hide_login' => [
+            'active' => in_array('wps-hide-login', $active, true),
+            'slug' => (string) get_option('whl_page'),
+            // LOGIN_SLUG set, usable, and really in force (the platform's login-slug module answers get_option with it).
+            'managed' => $const('LOGIN_SLUG') !== '' && (string) get_option('whl_page') === sanitize_title_with_dashes($const('LOGIN_SLUG')),
+        ],
         'cf7_forms' => $forms,
         'cf7_active' => in_array('contact-form-7', $active, true),
         'smtp_host_set' => $const('SMTP_HOST') !== '',

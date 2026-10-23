@@ -11,7 +11,7 @@ function pkdeGoodFacts(): array
         'blogdescription' => 'Quality widgets for everyone',
         'wordfence' => array_merge(pkde_drift_wordfence_standard(), ['alertEmails' => 'office@acme-widgets.co.uk']),
         'turnstile' => ['appearance' => 'always', 'login' => '1', 'cf7_all' => '1', 'tested' => 'yes', 'reset' => '', 'keys_present' => true],
-        'hide_login' => ['active' => true, 'slug' => 'staff-entrance'],
+        'hide_login' => ['active' => true, 'slug' => 'staff-entrance', 'managed' => true],
         'w3tc' => ['settings' => pkde_w3tc_standard('https://example.test/sitemap_index.xml'), 'reject_cookies' => ['woocommerce_items_in_cart', 'wp_woocommerce_session_', 'other'], 'expected_sitemap' => 'https://example.test/sitemap_index.xml'],
         'rankmath' => ['skip' => true, 'connected' => false],
         'woocommerce_active' => true,
@@ -261,5 +261,24 @@ it('requires Post SMTP to be configured and ready, not only active, and never pr
     $facts = pkdeGoodFacts();
     $facts['active_plugins'] = array_values(array_diff($facts['active_plugins'], ['post-smtp']));
     $facts['smtp_host_set'] = false;
+    expect(pkdeStatuses($facts))->not->toHaveKey($check);
+});
+
+it('requires the login slug to be managed by .env, and never prints it', function () {
+    $check = 'Login slug managed by .env';
+    expect(pkdeStatuses(pkdeGoodFacts())[$check])->toBe('PASS');
+
+    $facts = pkdeGoodFacts();
+    $facts['hide_login']['managed'] = false;
+    $rows = array_values(array_filter(pkde_drift_evaluate($facts), fn($r) => $r[1] === $check));
+    expect($rows[0][0])->toBe('FAIL')
+        ->and($rows[0][2])->toContain('LOGIN_SLUG')
+        ->and($rows[0][2])->not->toContain('staff-entrance');
+
+    $facts['env'] = 'development';
+    expect(pkdeStatuses($facts)[$check])->toBe('SKIP');
+
+    $facts = pkdeGoodFacts();
+    $facts['hide_login']['active'] = false;
     expect(pkdeStatuses($facts))->not->toHaveKey($check);
 });
