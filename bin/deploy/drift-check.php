@@ -188,6 +188,22 @@ function pkde_drift_evaluate(array $f): array
         }
         $cmp("Plugin $slugName active", in_array($slugName, $active, true), 'not active', in_array($slugName, ['simple-cloudflare-turnstile', 'post-smtp', 'wps-hide-login'], true));
     }
+    // Post SMTP must be able to send, not just be active: 4.0.2 marks its transport "not ready" when the From address is empty. Only
+    // presence is checked (a value is never printed).
+    if (in_array('post-smtp', $active, true)) {
+        $ps = $f['post_smtp'] ?? null;
+        $missing = [];
+        if (! is_array($ps)) {
+            $missing[] = 'its options could not be read';
+        } else {
+            $transport = (string) ($ps['transport'] ?? '');
+            $transport === 'smtp' || $missing[] = 'transport is ' . ($transport === '' ? 'unset' : "'$transport'") . ', not smtp';
+            empty($ps['sender_set']) && $missing[] = 'no sender (From) address: set SMTP_FROM';
+            empty($ps['host_set']) && $missing[] = 'no SMTP host: set SMTP_HOST';
+            empty($ps['password_set']) && $missing[] = 'no SMTP password: set SMTP_PASSWORD';
+        }
+        $cmp('Post SMTP configured and ready', $missing === [], implode('; ', $missing), true);
+    }
     $extra = array_values(array_diff($active, $expected, pkde_drift_seo_plugins(), ['contact-form-7', 'woocommerce', 'wps-hide-login', 'post-smtp', 'simple-cloudflare-turnstile']));
     if ($extra !== []) {
         $add('INFO', 'Other active plugins', implode(', ', $extra));
@@ -262,6 +278,16 @@ function pkde_drift_collect(): array
         'cf7_forms' => $forms,
         'cf7_active' => in_array('contact-form-7', $active, true),
         'smtp_host_set' => $const('SMTP_HOST') !== '',
+        'post_smtp' => class_exists('PostmanOptions') ? (function () {
+            $o = PostmanOptions::getInstance();
+
+            return [
+                'transport' => (string) $o->getTransportType(),
+                'sender_set' => trim((string) $o->getMessageSenderEmail()) !== '',
+                'host_set' => trim((string) $o->getHostname()) !== '',
+                'password_set' => (string) $o->getPassword() !== '',
+            ];
+        })() : null,
         'active_plugins' => array_values($active),
     ];
 }

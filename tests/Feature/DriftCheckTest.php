@@ -18,6 +18,7 @@ function pkdeGoodFacts(): array
         'cf7_forms' => [['id' => 5, 'has_subject' => false, 'subject' => PKDE_DRIFT_SUBJECT, 'mail2_active' => false, 'mail2_subject' => '']],
         'cf7_active' => true,
         'smtp_host_set' => true,
+        'post_smtp' => ['transport' => 'smtp', 'sender_set' => true, 'host_set' => true, 'password_set' => true],
         'active_plugins' => ['wordfence', 'seo-by-rank-math', 'ewww-image-optimizer', 'w3-total-cache', 'speculation-rules', 'wps-hide-login', 'simple-cloudflare-turnstile', 'contact-form-7', 'post-smtp'],
     ];
 }
@@ -222,4 +223,36 @@ it('is read only', function () {
     expect($code)->not->toMatch('/\b(update_option|add_option|delete_option|update_post_meta|delete_post_meta|wp_insert_post|wp_update_post|wp_delete_post|file_put_contents|unlink|activate_plugin|deactivate_plugins)\s*\(/')
         ->and($code)->not->toMatch('/wfConfig::(set|remove)\b/')
         ->and($code)->not->toMatch('/->(query|insert|update|delete)\s*\(/');
+});
+
+it('requires Post SMTP to be configured and ready, not only active, and never prints a value', function () {
+    $check = 'Post SMTP configured and ready';
+    expect(pkdeStatuses(pkdeGoodFacts())[$check])->toBe('PASS');
+
+    $cases = [
+        'sender_set' => 'SMTP_FROM',
+        'host_set' => 'SMTP_HOST',
+        'password_set' => 'SMTP_PASSWORD',
+    ];
+    foreach ($cases as $key => $hint) {
+        $facts = pkdeGoodFacts();
+        $facts['post_smtp'][$key] = false;
+        $rows = array_values(array_filter(pkde_drift_evaluate($facts), fn($r) => $r[1] === $check));
+
+        expect($rows[0][0])->toBe('FAIL')
+            ->and($rows[0][2])->toContain($hint);
+    }
+
+    $facts = pkdeGoodFacts();
+    $facts['post_smtp']['transport'] = 'default';
+    expect(pkdeStatuses($facts)[$check])->toBe('FAIL');
+
+    $facts = pkdeGoodFacts();
+    $facts['post_smtp'] = null;
+    expect(pkdeStatuses($facts)[$check])->toBe('FAIL');
+
+    $facts = pkdeGoodFacts();
+    $facts['active_plugins'] = array_values(array_diff($facts['active_plugins'], ['post-smtp']));
+    $facts['smtp_host_set'] = false;
+    expect(pkdeStatuses($facts))->not->toHaveKey($check);
 });
