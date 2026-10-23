@@ -52,6 +52,7 @@ jobs:
           bash tests/deploy/perf-probe.test.sh
           bash tests/deploy/wp-find.test.sh
           bash tests/deploy/fingerprint.test.sh
+          bash tests/deploy/fingerprint-normalise.test.sh
           python3 -m unittest discover -s tests/native
           # Runs the real deploy step against a throwaway local sshd; needs sshd's privilege-separation directory.
           sudo mkdir -p /run/sshd

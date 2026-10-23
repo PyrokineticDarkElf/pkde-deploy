@@ -10,7 +10,10 @@
 #   bin/deploy/fingerprint.sh compare-sites https://staging.example.com https://www.example.com [--paths /,/about/] [--widths 1440,390] [--tolerance 0]
 #
 # compare-sites captures both sites and compares them in one command: the REQUIRED check before a production release (staging is
-# what was tested, so every difference to production has to be explained). A capture that crashes in node is retried once.
+# what was tested, so every difference to production has to be explained). A capture that crashes in node is retried once. It
+# normalises what only one environment has by design (consent banners and widgets with a CookieYes opt-out cookie, the Google Tag
+# Manager frame, <picture> wrappers); --raw turns that off. A staging site behind Basic auth: FINGERPRINT_AUTH=user:pass in the
+# environment, never as an argument.
 #
 # Exit 0 when nothing differs, 1 with the differences listed otherwise. Needs Node 20+ and Chrome/Chromium (CHROME_PATH overrides the
 # auto-detected path); puppeteer-core installs once into ~/.cache/pkde-prelaunch (the pre-launch audit's tool directory).
@@ -21,7 +24,7 @@ case "$MODE" in
     capture) URL="${2:-}"; OUT="${3:-}"; [ -n "$URL" ] && [ -n "$OUT" ] || { echo "usage: fingerprint.sh capture <url> <out.json> [options]" >&2; exit 2; }; shift 3 ;;
     compare-sites) SITE_A="${2:-}"; SITE_B="${3:-}"; [ -n "$SITE_A" ] && [ -n "$SITE_B" ] || { echo "usage: fingerprint.sh compare-sites <url-a> <url-b> [--paths ...] [--widths ...] [--tolerance N]" >&2; exit 2; }; shift 3 ;;
     compare) A="${2:-}"; B="${3:-}"; [ -f "$A" ] && [ -f "$B" ] || { echo "usage: fingerprint.sh compare <a.json> <b.json>" >&2; exit 2; }; shift 3 ;;
-    *) sed -n '3,16p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+    *) sed -n '3,21p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac
 command -v node >/dev/null 2>&1 || { echo "Node is required (20+)." >&2; exit 2; }
 
@@ -54,17 +57,18 @@ capture() { # <url> <out> [options]
 }
 
 if [ "$MODE" = compare-sites ]; then
-    TOL=(); OPTS=()
+    TOL=(); OPTS=(); NORM=(--normalise)
     while [ $# -gt 0 ]; do
         case "$1" in
             --tolerance) TOL=(--tolerance "${2:-0}"); shift 2 ;;
+            --raw) NORM=(); shift ;;
             *) OPTS+=("$1"); shift ;;
         esac
     done
     W="$(mktemp -d)" || exit 2
     trap 'rm -rf "$W"' EXIT
-    echo "Capturing $SITE_A ..."; capture "$SITE_A" "$W/a.json" "${OPTS[@]+"${OPTS[@]}"}" || { echo "capture of $SITE_A failed" >&2; exit 2; }
-    echo "Capturing $SITE_B ..."; capture "$SITE_B" "$W/b.json" "${OPTS[@]+"${OPTS[@]}"}" || { echo "capture of $SITE_B failed" >&2; exit 2; }
+    echo "Capturing $SITE_A ..."; capture "$SITE_A" "$W/a.json" "${NORM[@]+"${NORM[@]}"}" "${OPTS[@]+"${OPTS[@]}"}" || { echo "capture of $SITE_A failed" >&2; exit 2; }
+    echo "Capturing $SITE_B ..."; capture "$SITE_B" "$W/b.json" "${NORM[@]+"${NORM[@]}"}" "${OPTS[@]+"${OPTS[@]}"}" || { echo "capture of $SITE_B failed" >&2; exit 2; }
     echo "Comparing $SITE_A (a) with $SITE_B (b):"
     node "$HERE/fingerprint.mjs" compare "$W/a.json" "$W/b.json" "${TOL[@]+"${TOL[@]}"}"
     exit $?

@@ -1,6 +1,6 @@
 // Layout fingerprint of a site's pages. Run through bin/deploy/fingerprint.sh, which installs the pinned tools.
 //
-//   node fingerprint.mjs capture --url http://localhost:8092 --out before.json [--paths /,/block-demo/] [--widths 1440,390] [--chrome PATH]
+//   node fingerprint.mjs capture --url http://localhost:8092 --out before.json [--paths /,/block-demo/] [--widths 1440,390] [--chrome PATH] [--normalise]
 //   node fingerprint.mjs compare before.json after.json [--tolerance 0]
 //
 // capture: for every path and viewport width, the tag, DOM position and box (x, y, width, height, rounded) of every rendered element of
@@ -8,6 +8,13 @@
 // first, so two captures of unchanged code are identical. compare: exits 1 and lists what differs (boxes beyond the tolerance in px,
 // different tags, different text, different element counts); a refactor that must not change the page (moving code into a package)
 // passes when nothing differs. Read-only: it only makes GET requests.
+//
+// --normalise (on for `fingerprint.sh compare-sites`, which compares a staging with a production site) removes what only one of the two
+// has by design, so a difference means a real difference: it sets a CookieYes consent cookie with every optional category off, hides the
+// known consent banners and widgets (CookieYes, Complianz, Cookiebot, OneTrust, Borlabs, Termly), the Google Tag Manager iframe and
+// noscript (hidden elements have no box and no text, and DOM paths do not shift), and treats <picture><source><img> as the bare <img>
+// (EWWW WebP wrappers exist where the .webp files do). A staging site behind HTTP Basic auth: set FINGERPRINT_AUTH=user:pass in the
+// environment (never on the command line); it is sent only to a server that asks for it.
 
 import { readFileSync, writeFileSync } from 'node:fs';
 
@@ -64,6 +71,15 @@ const base = new URL(arg('url')).origin;
 const out = arg('out');
 const widths = (arg('widths', '1440,390')).split(',').map(Number);
 const paths = (arg('paths', '/')).split(',').filter(Boolean);
+const normalise = process.argv.includes('--normalise');
+// Consent widgets and tag-manager frames that exist on one environment only. Hidden with display:none, not removed, so paths stay stable.
+const IGNORED = [
+  '[class*="cky-"]', '#cookieyes', '[id^="cookieyes"]', '[class*="cmplz-"]', '[id^="cmplz-"]', '#CybotCookiebotDialog', '#CybotCookiebotDialogBodyUnderlay',
+  '#onetrust-consent-sdk', '#BorlabsCookieBox', '#termly-code-snippet-support', 'iframe[src*="googletagmanager.com"]', 'noscript',
+].join(',');
+const CONSENT_COOKIE = 'consentid:fingerprint,consent:no,action:yes,necessary:yes,functional:no,analytics:no,performance:no,advertisement:no,other:no';
+const auth = process.env.FINGERPRINT_AUTH || '';
+const credentials = auth.includes(':') ? { username: auth.slice(0, auth.indexOf(':')), password: auth.slice(auth.indexOf(':') + 1) } : null;
 const browser = await puppeteer.launch({ executablePath: arg('chrome'), headless: true, args: ['--no-sandbox'] });
 const result = { url: base, widths, pages: {} };
 
@@ -72,7 +88,10 @@ for (const path of paths) {
     const page = await browser.newPage();
     await page.setViewport({ width, height: 900, deviceScaleFactor: 1 });
     await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
+    if (credentials) await page.authenticate(credentials);
+    if (normalise) await page.setCookie({ name: 'cookieyes-consent', value: CONSENT_COOKIE, url: base });
     await page.goto(base + path, { waitUntil: 'networkidle2', timeout: 90000 });
+    if (normalise) await page.addStyleTag({ content: `${IGNORED}{display:none!important}` });
     await page.addStyleTag({ content: '*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important;caret-color:transparent!important}' });
     // Scroll to the bottom and back so lazy images load and their boxes settle, then wait for fonts.
     await page.evaluate(async () => {
@@ -81,7 +100,7 @@ for (const path of paths) {
       await document.fonts.ready;
       await new Promise((r) => setTimeout(r, 400));
     });
-    result.pages[`${path} @${width}`] = await page.evaluate(() => {
+    result.pages[`${path} @${width}`] = await page.evaluate((unwrapPicture) => {
       const skip = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'LINK', 'META', 'HEAD', 'TITLE', 'BR']);
       const elements = [];
       const walk = (el, path) => {
@@ -89,16 +108,19 @@ for (const path of paths) {
         for (const child of el.children) {
           const here = `${path}.${i++}`;
           if (skip.has(child.tagName)) continue;
-          const r = child.getBoundingClientRect();
+          // <picture><source><img></picture> counts as the bare <img> at the picture's own position.
+          const node = unwrapPicture && child.tagName === 'PICTURE' ? child.querySelector('img') : child;
+          if (!node) continue;
+          const r = node.getBoundingClientRect();
           if (r.width > 0 || r.height > 0) {
-            elements.push([here, child.tagName.toLowerCase(), Math.round(r.x + scrollX), Math.round(r.y + scrollY), Math.round(r.width), Math.round(r.height)]);
+            elements.push([here, node.tagName.toLowerCase(), Math.round(r.x + scrollX), Math.round(r.y + scrollY), Math.round(r.width), Math.round(r.height)]);
           }
-          walk(child, here);
+          walk(node, here);
         }
       };
       walk(document.body, 'b');
       return { text: document.body.innerText.replace(/\s+/g, ' ').trim(), elements };
-    });
+    }, normalise);
     await page.close();
   }
 }
