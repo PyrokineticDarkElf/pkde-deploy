@@ -38,6 +38,10 @@ Node, Composer install (dev), Pint, Pest, Composer install (production, root and
 the artifact, and on a push to `main` (production) or `develop` (staging) with `DEPLOY_ENABLED` true: rsync to a new release directory,
 then `activate-release.sh` as two execs on one SSH connection (`activate`, then `post`), each logging its duration.
 
+## Required before a production release
+
+Run `bin/deploy/fingerprint.sh compare-sites <staging-url> <production-url> --paths /,/about/,...` after the staging deploy and before the production release: it captures both sites (box, tag, DOM path and visible text per page at 1440 and 390; a capture that crashes in node is retried once) and lists every difference. Each one must be explained in the release task. Exit 0 means identical.
+
 ## Tools (`bin/deploy`)
 
 `activate-release.sh` (runs on the server), `assemble-artifact.sh` and `check-artifact.sh`, `composer-audit.sh` (the workflow runs it on the root and theme lock files: fails on a high, critical or unrated advisory; accept one deliberately with `config.audit.ignore` in that `composer.json`), `retry.sh`, `rcpt-probe.py`, `drift-check.php`

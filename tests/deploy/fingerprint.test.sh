@@ -31,5 +31,25 @@ check "a missing element fails" "! cmp_ $T/a.json $T/fewer.json > $T/o4 && grep 
 printf '{"url":"x","widths":[1440],"pages":{}}' > "$T/nopage.json"
 check "a missing page fails" "! cmp_ $T/a.json $T/nopage.json > $T/o5 && grep -q 'only in' $T/o5"
 
+# compare-sites: a fake node crashes the first capture of each URL and writes a fingerprint on the second; the real node compares.
+mkdir -p "$T/fake" "$T/tools/node_modules/puppeteer-core"
+REAL_NODE="$(command -v node)"
+cat > "$T/fake/node" <<FAKE
+#!/usr/bin/env bash
+case "\$*" in *" compare "*) exec "$REAL_NODE" "\$@" ;; esac
+url=""; out=""
+while [ \$# -gt 0 ]; do case "\$1" in --url) url="\$2"; shift ;; --out) out="\$2"; shift ;; esac; shift; done
+n="$T/calls-\$(printf '%s' "\$url" | tr -c 'a-z0-9' _)"; c=\$(( \$(cat "\$n" 2>/dev/null || echo 0) + 1 )); echo "\$c" > "\$n"
+[ "\$c" -ge 2 ] || exit 1
+text="Hello"; [ -n "\${FAKE_DIFFERENT:-}" ] && case "\$url" in *b.test*) text="Goodbye" ;; esac
+printf '{"url":"x","widths":[1440],"pages":{"/ @1440":{"text":"%s","elements":[["b.0","main",0,0,1440,600]]}}}' "\$text" > "\$out"
+FAKE
+chmod +x "$T/fake/node"
+site() { PATH="$T/fake:$PATH" CHROME_PATH=/usr/bin/true PKDE_PRELAUNCH_TOOLS="$T/tools" FINGERPRINT_RETRY_PAUSE=0 bash "$REPO_ROOT/bin/deploy/fingerprint.sh" compare-sites "$@"; }
+check "compare-sites retries a crashed capture once and reports identical sites" "site https://a.test https://b.test --paths / > $T/s1 2>&1 && grep -q IDENTICAL $T/s1 && grep -q 'retrying once' $T/s1"
+rm -f "$T"/calls-*
+check "compare-sites fails and lists the difference when the sites differ" "! FAKE_DIFFERENT=1 site https://a.test https://b.test > $T/s2 2>&1 && grep -q 'visible text differs' $T/s2"
+check "compare-sites needs two URLs" "! bash $REPO_ROOT/bin/deploy/fingerprint.sh compare-sites https://a.test > /dev/null 2>&1"
+
 echo "RESULT: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

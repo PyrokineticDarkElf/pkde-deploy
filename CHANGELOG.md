@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026.10.23.1
+
+- `fingerprint.sh compare-sites <url-a> <url-b> [--paths ...] [--widths ...] [--tolerance N]` captures two sites and prints the differences in one command; the README makes it a required step between the staging deploy and a production release (every difference explained). A capture that crashes in node (the first one after a build sometimes does) is retried once. Tests use a fake node that crashes the first capture.
+
 ## 2026.10.23
 
 - The deploy workflow audits the theme's npm packages: `npm audit --omit=dev --audit-level=high` (what ships to browsers) fails the run; `npm audit --audit-level=high` for the build tools (Vite and plugins, never shipped) is a warning annotation only.
