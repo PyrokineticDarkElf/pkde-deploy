@@ -26,7 +26,7 @@ permissions:
 
 env:
   # Stamped with the tag by bin/release.sh (in the tagged commit), like deploy.yml.
-  PKDE_DEPLOY_VERSION: 2026.10.23.2
+  PKDE_DEPLOY_VERSION: 2026.10.23.3
 
 jobs:
   audit:
