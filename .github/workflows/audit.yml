@@ -1,0 +1,71 @@
+name: Dependency audit (reusable)
+
+# Weekly (and on demand) audit of a site's locked dependencies, for a caller with `schedule:` and `workflow_dispatch:` triggers.
+# Renovate cannot be relied on for a vulnerability that is only fixed in a transitive lock entry (CVE-2026-108082 in symfony/http-foundation
+# reached no site that way), and a site that has not been pushed for weeks never runs the deploy workflow's own audit steps. A failed
+# scheduled run emails the repository owner. Same tools and rules as the deploy workflow: see bin/deploy/composer-audit.sh.
+
+on:
+  workflow_call:
+    inputs:
+      runs-on:
+        type: string
+        default: ubuntu-26.04
+      php-version:
+        type: string
+        default: "8.3"
+      node-version:
+        type: string
+        default: "24"
+      theme-dir:
+        type: string
+        default: web/app/themes/sage
+
+permissions:
+  contents: read
+
+env:
+  # Stamped with the tag by bin/release.sh (in the tagged commit), like deploy.yml.
+  PKDE_DEPLOY_VERSION: 2026.10.22.2
+
+jobs:
+  audit:
+    runs-on: ${{ inputs.runs-on }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check out the pipeline tools (pkde-deploy)
+        uses: actions/checkout@v7
+        with:
+          repository: PyrokineticDarkElf/pkde-deploy
+          ref: ${{ env.PKDE_DEPLOY_VERSION }}
+          path: .pkde-deploy
+          persist-credentials: false
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ inputs.php-version }}
+          tools: composer:v2
+          coverage: none
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Audit root Composer dependencies
+        run: bash .pkde-deploy/bin/deploy/composer-audit.sh .
+
+      - name: Audit theme Composer dependencies
+        run: bash "$GITHUB_WORKSPACE/.pkde-deploy/bin/deploy/composer-audit.sh" .
+        working-directory: ${{ inputs.theme-dir }}
+
+      # The lock file is enough: no install needed to audit.
+      - name: Audit theme npm dependencies (shipped)
+        run: npm audit --omit=dev --audit-level=high
+        working-directory: ${{ inputs.theme-dir }}
+
+      - name: Audit theme npm build tools
+        run: npm audit --audit-level=high
+        working-directory: ${{ inputs.theme-dir }}

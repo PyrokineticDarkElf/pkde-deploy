@@ -160,13 +160,17 @@ for (const path of paths) {
         // A unique key per element (its position in the DOM), so two plain links are not mistaken for one stop.
         const path = [];
         for (let n = el; n && n.parentElement; n = n.parentElement) path.push(Array.prototype.indexOf.call(n.parentElement.children, n));
-        return { key: path.join('.'), id: el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (el.getAttribute('aria-label') ? `[${el.getAttribute('aria-label')}]` : (el.textContent || '').trim().slice(0, 24) ? `[${(el.textContent || '').trim().slice(0, 24)}]` : ''), noIndicator: same && !focused.outline, visible: r.width > 0 && r.height > 0 };
+        return { key: path.join('.'), id: el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (el.getAttribute('aria-label') ? `[${el.getAttribute('aria-label')}]` : (el.textContent || '').trim().slice(0, 24) ? `[${(el.textContent || '').trim().slice(0, 24)}]` : ''), noIndicator: same && !focused.outline && el.tagName !== 'IFRAME', iframe: el.tagName === 'IFRAME', visible: r.width > 0 && r.height > 0 };
       }, hasIndicator.toString());
       if (!stop) break;
       if (seen.some((s) => s.key === stop.key)) break; // focus came back round: the page's tab cycle is complete
       seen.push(stop);
     }
     const bad = seen.filter((s) => s.noIndicator && s.visible);
+  // A cross-origin iframe (YouTube, a map) draws its own focus ring inside the frame; the page cannot style or measure it, so it is
+  // listed, not failed. Its title is still an axe check.
+  const frames = seen.filter((s) => s.iframe);
+  if (frames.length) report('INFO', `Focus ${path}: iframe stops not checked for an indicator (cross-origin)`, frames.slice(0, 10).map((f) => f.id).join(', '));
     report(seen.length > 0 ? 'PASS' : 'FAIL', `Focus ${path}: page has keyboard focus stops`, `${seen.length} tabbable stops reached`);
     report(bad.length ? 'FAIL' : 'PASS', `Focus ${path}: every focus stop shows a visible indicator`, bad.slice(0, 10).map((b) => b.id).join(', '));
   } catch (e) { abort(`axe and focus check for ${path}`, e); }

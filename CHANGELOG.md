@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026.10.23
+
+- The deploy workflow audits the theme's npm packages: `npm audit --omit=dev --audit-level=high` (what ships to browsers) fails the run; `npm audit --audit-level=high` for the build tools (Vite and plugins, never shipped) is a warning annotation only.
+- New reusable workflow `audit.yml` for a weekly `schedule:` (and `workflow_dispatch:`) caller: it runs the Composer audit of the root and theme locks and both npm audits, so a vulnerability fixed only in a transitive lock entry (which Renovate did not turn into a PR for CVE-2026-108082) still fails a run that emails the repository owner, even for a site nobody has pushed for weeks. `bin/release.sh` stamps and CI checks `PKDE_DEPLOY_VERSION` in both workflow files.
+- The pre-launch audit no longer fails a cross-origin iframe (YouTube, a map) on the focus-indicator check: the page cannot style or measure a focus ring drawn inside the frame. The iframe stops are listed as INFO.
+- `composer.json` pins `config.platform.php` to 8.3.0 (dev installs only).
+
 ## 2026.10.22.2
 
 - The workflow audits the Composer lock files, root and theme, on every run including pull requests (`bin/deploy/composer-audit.sh`, shipped packages only). It fails on an advisory rated high or critical and on an unrated one (many advisories, such as CVE-2026-108082 in symfony/http-foundation, carry no rating, and "unknown" must not read as "fine"), lets low and medium through with a listing, and fails when the audit cannot run. A deliberate exception goes in the site's `config.audit.ignore` with the reason. A test covers the severities with a fake `composer`.

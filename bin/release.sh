@@ -27,8 +27,10 @@ grep -q "^## $TAG\$" CHANGELOG.md || { echo "CHANGELOG.md has no '## $TAG' secti
 SHA="$(git rev-parse HEAD)"
 [ "$(ci_state "$SHA")" = "completed success" ] || { echo "CI is not green for ${SHA:0:7} (got: $(ci_state "$SHA"))" >&2; exit 1; }
 
-sed -i.bak "s/^  PKDE_DEPLOY_VERSION: .*/  PKDE_DEPLOY_VERSION: $TAG/" .github/workflows/deploy.yml && rm -f .github/workflows/deploy.yml.bak
-git add .github/workflows/deploy.yml
+for wf in deploy audit; do
+    sed -i.bak "s/^  PKDE_DEPLOY_VERSION: .*/  PKDE_DEPLOY_VERSION: $TAG/" ".github/workflows/$wf.yml" && rm -f ".github/workflows/$wf.yml.bak"
+    git add ".github/workflows/$wf.yml"
+done
 if git diff --cached --quiet; then
     echo "The workflow already carries $TAG; tagging HEAD."   # e.g. a stamp fixed by hand
 else

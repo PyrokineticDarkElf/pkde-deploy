@@ -146,6 +146,16 @@ jobs:
         run: npm ci
         working-directory: ${{ inputs.theme-dir }}
 
+      # What the theme ships to browsers: its runtime npm dependencies (build tools are devDependencies and never ship). Fails on high or critical.
+      - name: Audit theme npm dependencies (shipped)
+        run: npm audit --omit=dev --audit-level=high
+        working-directory: ${{ inputs.theme-dir }}
+
+      # Build-time tools (Vite and plugins) run on the runner and on developer machines only. A finding is shown as a warning and does not stop a deploy.
+      - name: Audit theme npm build tools (warning only)
+        run: npm audit --audit-level=high || echo "::warning::npm audit found high or critical advisories in the build tools (not shipped); run npm audit fix"
+        working-directory: ${{ inputs.theme-dir }}
+
       - name: Check generated design tokens are up to date
         run: npm run theme:check
         working-directory: ${{ inputs.theme-dir }}

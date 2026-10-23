@@ -61,8 +61,10 @@ jobs:
       - name: The workflow is stamped with the tag
         if: startsWith(github.ref, 'refs/tags/')
         run: |
-          stamp="$(sed -n 's/^  PKDE_DEPLOY_VERSION: *//p' .github/workflows/deploy.yml | head -1 | tr -d ' ')"
-          [ "$stamp" = "$GITHUB_REF_NAME" ] || { echo "::error::PKDE_DEPLOY_VERSION is '$stamp' but the tag is '$GITHUB_REF_NAME'"; exit 1; }
+          for wf in deploy audit; do
+            stamp="$(sed -n 's/^  PKDE_DEPLOY_VERSION: *//p' ".github/workflows/$wf.yml" | head -1 | tr -d ' ')"
+            [ "$stamp" = "$GITHUB_REF_NAME" ] || { echo "::error::$wf.yml PKDE_DEPLOY_VERSION is '$stamp' but the tag is '$GITHUB_REF_NAME'"; exit 1; }
+          done
 
       # Public repository: no secrets in any commit, ever. Needs no token; runs on forks' pull requests too, which only get read access.
       - name: Secret scan (gitleaks, full history)
