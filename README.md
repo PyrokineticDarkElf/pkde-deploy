@@ -46,7 +46,7 @@ Run `bin/deploy/fingerprint.sh compare-sites <staging-url> <production-url> --pa
 
 `activate-release.sh` (runs on the server), `assemble-artifact.sh` and `check-artifact.sh`, `composer-audit.sh` (the workflow runs it on the root and theme lock files: fails on a high, critical or unrated advisory; accept one deliberately with `config.audit.ignore` in that `composer.json`), `retry.sh`, `rcpt-probe.py`, `drift-check.php`
 with `w3tc-standard.php` and `w3tc-settings.php`, `perf-probe.php` and `perf-probe.sh`, `wp.sh`, `prelaunch-audit.sh`/`.mjs`,
-`wordfence-cloudflare.sh`, `safe-push-main.sh`, `sync-template-adrs.sh`, `check-site-paths.sh`, and `native/` (page-conversion tools).
+`wordfence-cloudflare.sh`, `seo/crawl.py` and `seo/compare.py` (the SEO baseline and the before/after comparison: `python3 bin/deploy/seo/crawl.py --base URL --out inventory`, then `compare.py live.csv new.csv [--accept PATHS] [--accept-file docs/seo/description-exceptions.md]`; needs python3 and `requests`), `safe-push-main.sh`, `sync-template-adrs.sh`, `check-site-paths.sh`, and `native/` (page-conversion tools).
 `assemble-artifact.sh` ships `drift-check.php`, the W3TC files, `perf-probe.*` and `wp.sh` into every release (outside the docroot); the guide
 in the starter explains each. A site that wants them locally requires this package with `require-dev` (`composer require --dev
 pkde/deploy:<tag>`), so they are in `vendor/pkde/deploy/bin/deploy/` and never in the shipped `vendor/` (the production install runs

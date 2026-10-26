@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026.10.26
+
+- New shared SEO tools `bin/deploy/seo/crawl.py` and `bin/deploy/seo/compare.py` (from the tcs, el and bb copies, so a site no longer carries its own): the crawler writes the inventory (status, redirect chain, title, description, canonical, robots, H1, Open Graph, JSON-LD types, image and alt counts, internal links); the comparison lists per URL a changed status, title, H1, canonical path or robots, and reports a changed DESCRIPTION on its own line, because a builder conversion changes the content a plugin derives it from. A description that starts with a page-builder token (Divi's dynamic-content `@ET-DC@eyJ...`, also with the full-width at sign U+FF20) is a LIVE BUG, not drift: listed, not counted, and a new-side token fails. `--accept` and `--accept-file` (the first column of the tables in docs/seo/description-exceptions.md) mark reviewed differences as ACCEPTED. A test covers each case.
+
 ## 2026.10.23.4
 
 - `drift-check.php`: new row "Login slug managed by .env" when WPS Hide Login is active: PASS only when `LOGIN_SLUG` is set, usable and really in force (the platform's login-slug module answers `whl_page` with it); a FAIL says to copy production's `whl_page` into `LOGIN_SLUG` in `shared/.env`. The slug is never printed; SKIP on a development stack.
