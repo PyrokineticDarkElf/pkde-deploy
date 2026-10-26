@@ -1,6 +1,6 @@
 // Layout fingerprint of a site's pages. Run through bin/deploy/fingerprint.sh, which installs the pinned tools.
 //
-//   node fingerprint.mjs capture --url http://localhost:8092 --out before.json [--paths /,/block-demo/] [--widths 1440,390] [--chrome PATH] [--normalise]
+//   node fingerprint.mjs capture --url http://localhost:8092 --out before.json [--paths /,/block-demo/] [--widths 1440,390] [--chrome PATH] [--normalise] [--hide '.related,.upsells']
 //   node fingerprint.mjs compare before.json after.json [--tolerance 0]
 //
 // capture: for every path and viewport width, the tag, DOM position and box (x, y, width, height, rounded) of every rendered element of
@@ -72,6 +72,9 @@ const out = arg('out');
 const widths = (arg('widths', '1440,390')).split(',').map(Number);
 const paths = (arg('paths', '/')).split(',').filter(Boolean);
 const normalise = process.argv.includes('--normalise');
+// --hide: CSS selectors (comma separated) hidden with display:none before measuring, for parts that change on every load by design (WooCommerce's
+// related products are picked at random), so the same build compares equal to itself. Hidden, not removed, so the other paths stay stable.
+const hide = arg('hide', '');
 // Consent widgets and tag-manager frames that exist on one environment only. Hidden with display:none, not removed, so paths stay stable.
 const IGNORED = [
   '[class*="cky-"]', '#cookieyes', '[id^="cookieyes"]', '[class*="cmplz-"]', '[id^="cmplz-"]', '#CybotCookiebotDialog', '#CybotCookiebotDialogBodyUnderlay',
@@ -92,6 +95,7 @@ for (const path of paths) {
     if (normalise) await page.setCookie({ name: 'cookieyes-consent', value: CONSENT_COOKIE, url: base });
     await page.goto(base + path, { waitUntil: 'networkidle2', timeout: 90000 });
     if (normalise) await page.addStyleTag({ content: `${IGNORED}{display:none!important}` });
+    if (hide) await page.addStyleTag({ content: `${hide}{display:none!important}` });
     await page.addStyleTag({ content: '*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important;caret-color:transparent!important}' });
     // Scroll to the bottom and back so lazy images load and their boxes settle, then wait for fonts.
     await page.evaluate(async () => {
