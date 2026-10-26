@@ -64,7 +64,7 @@ permissions:
 
 env:
   # Stamped with the tag by bin/release.sh (in the tagged commit). 'dev' means an untagged checkout: callers must use a tag.
-  PKDE_DEPLOY_VERSION: 2026.10.26.2
+  PKDE_DEPLOY_VERSION: 2026.10.26.3
 
 jobs:
   build:
