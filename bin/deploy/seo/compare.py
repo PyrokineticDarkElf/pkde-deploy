@@ -5,8 +5,8 @@
       [--accept /about-us/,/contact-us/] [--accept-file docs/seo/description-exceptions.md]
 
 Per URL it reports a changed status, final status, title, DESCRIPTION, H1, and a changed canonical path or robots value (the last two only
-when both sides print one: a non-production site prints noindex and no canonical, so re-check those at cutover). A description that changes
-is reported on its own line, because it is the quiet one: a builder conversion changes the content a plugin derives it from (pin every
+when both sides print one: a non-production site prints noindex and no canonical, so re-check those at cutover). A description that changes, appears (the live
+page had none: Rank Math's WooCommerce module prints fallbacks) or disappears is reported on its own line, because it is the quiet one: a builder conversion changes the content a plugin derives it from (pin every
 auto-derived description as the page's own before converting).
 
 A description that starts with a page-builder token is a bug, not drift: Divi's dynamic-content token `@ET-DC@eyJ...` (also written with the
@@ -72,6 +72,11 @@ def compare(live, new, accepted):
                 elif PLACEHOLDER.match(before):
                     live_bugs += 1
                     lines.append(f'LIVE BUG {path}: the live description is a page-builder token ({before[:40]!r}...), not text; new: {after[:90]!r}')
+                elif not before:
+                    # Rank Math's WooCommerce module (and Yoast) print fallbacks the live site never had: a difference, not an improvement.
+                    report(path, f'DESCRIPTION ADDED, the live page has none: {after!r}')
+                elif not after:
+                    report(path, f'DESCRIPTION REMOVED: {before!r} -> nothing')
                 else:
                     report(path, f'DESCRIPTION CHANGED: {before!r} -> {after!r}')
             else:

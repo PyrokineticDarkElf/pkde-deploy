@@ -42,5 +42,10 @@ check "a changed title fails" "! cmp_ $T/live.csv $T/title.csv > $T/o5 && grep -
 row https://new.example.test/ Home "Our home" https://new.example.test/elsewhere/ | cat - <(row https://new.example.test/about/ About "About us text") | mk canon.csv
 check "a changed canonical path fails" "! cmp_ $T/live.csv $T/canon.csv | grep -q '^0 unexplained'"
 
+row https://live.example.com/ Home "" | cat - <(row https://live.example.com/about/ About "") | mk nodesc-live.csv
+row https://new.example.test/ Home "" | cat - <(row https://new.example.test/about/ About "Short description fallback") | mk nodesc-new.csv
+check "live has none and the rebuild has one: DESCRIPTION ADDED, a failure" "! cmp_ $T/nodesc-live.csv $T/nodesc-new.csv > $T/o6 && grep -q '/about/: DESCRIPTION ADDED' $T/o6"
+check "live has one and the rebuild has none: DESCRIPTION REMOVED" "! cmp_ $T/same.csv $T/nodesc-live.csv > $T/o7 && grep -q 'DESCRIPTION REMOVED' $T/o7"
+
 echo "RESULT: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
