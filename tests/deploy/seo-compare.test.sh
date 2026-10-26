@@ -47,5 +47,22 @@ row https://new.example.test/ Home "" | cat - <(row https://new.example.test/abo
 check "live has none and the rebuild has one: DESCRIPTION ADDED, a failure" "! cmp_ $T/nodesc-live.csv $T/nodesc-new.csv > $T/o6 && grep -q '/about/: DESCRIPTION ADDED' $T/o6"
 check "live has one and the rebuild has none: DESCRIPTION REMOVED" "! cmp_ $T/same.csv $T/nodesc-live.csv > $T/o7 && grep -q 'DESCRIPTION REMOVED' $T/o7"
 
+# robots: a noindex new site is not compared (every URL would differ) unless --cutover; --ignore robots leaves it out explicitly.
+row https://live.example.com/ Home "Our home" https://live.example.com/ '"index, follow"' | mk robots-live.csv
+row https://new.example.test/ Home "Our home" "" '"noindex, nofollow"' | mk robots-new.csv
+check "a noindex new site does not produce a robots line, and says so" "cmp_ $T/robots-live.csv $T/robots-new.csv > $T/o8 && grep -q 'robots not compared on 1 URL' $T/o8 && ! grep -q '^/: robots' $T/o8"
+check "--cutover compares robots strictly: a noindex on the new side fails" "! cmp_ $T/robots-live.csv $T/robots-new.csv --cutover > $T/o9 && grep -q '/: robots' $T/o9"
+row https://new.example.test/ Home "Our home" "" '"noindex, follow"' | mk robots-new2.csv
+row https://live.example.com/ Home "Our home" https://live.example.com/ "max-snippet:-1" | mk robots-live2.csv
+row https://new.example.test/ Home "Our home" "" '"index, follow"' | mk robots-new3.csv
+check "an indexable new site with a different robots value fails" "! cmp_ $T/robots-live2.csv $T/robots-new3.csv | grep -q '^0 unexplained'"
+check "--ignore robots leaves it out even then" "cmp_ $T/robots-live2.csv $T/robots-new3.csv --ignore robots | grep -q '^0 unexplained'"
+
+# query strings: /shop/?sage_view=new must not overwrite /shop/.
+{ echo "$HEAD"; row https://live.example.com/shop/ Shop "Shop text" "" "" "Shop"; } > "$T/q-live.csv"
+{ echo "$HEAD"; row https://new.example.test/shop/ Shop "Shop text" "" "" "Shop"; row "https://new.example.test/shop/?sage_view=new" Shop "Shop text" "" "" "New"; } > "$T/q-new.csv"
+check "a query-string URL is skipped by default and does not overwrite its page" "cmp_ $T/q-live.csv $T/q-new.csv > $T/o10 && grep -q '^0 unexplained' $T/o10 && grep -q '1 new URL(s) with a query string were skipped' $T/o10"
+check "--include-query keys by path and query: the extra URL is NEW in new, the page itself still compared" "cmp_ $T/q-live.csv $T/q-new.csv --include-query > $T/o11 && grep -q 'NEW in new: /shop/?sage_view=new' $T/o11 && grep -q '^0 unexplained' $T/o11"
+
 echo "RESULT: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

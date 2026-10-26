@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026.10.26.3
+
+- `seo/compare.py` (js): robots noise gone: while the new site is noindex (a non-production rebuild always is) robots is not compared and one NOTE line says how many URLs were skipped; `--cutover` compares robots and canonical strictly at go-live and fails a noindex on the new side; `--ignore robots,h1,...` leaves any field out on purpose.
+- `seo/compare.py` keyed rows by path only, so `/shop/?sage_view=new` overwrote `/shop/` (js read the /shop/ H1 as "New"). A URL with a query string is now skipped on both sides (with a NOTE count) unless `--include-query`, which keys rows by path and query. Tests cover robots (noindex skipped, `--cutover`, `--ignore`, a real difference) and the query strings.
+
 ## 2026.10.26.2
 
 - New `bin/deploy/seo/text_compare.py` (from el): for each path, the words of the page's visible `<main>` text that are on one side only, live against the rebuild, over HTTP (header, footer, scripts, styles, SVG and select options ignored; case, emoji and punctuation do not count). It is what a visitor reads, not the stored content. Exit 1 when a page differs or a request fails. Tests cover the comparison without a network.
