@@ -31,6 +31,7 @@ import base64, sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 role, port = sys.argv[1], int(sys.argv[2])
+hits = {'n': 0}
 IMG = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
 word = "Welcome" if role != "changed" else "Goodbye"
 BODY = f"<h1>{word} to the site</h1><p>Some text here.</p>"
@@ -42,7 +43,13 @@ else:
     EXTRA = ('<div class="cky-consent-container" style="position:fixed;bottom:0;left:0;width:100%;height:120px;background:#eee">We use cookies</div>'
              '<div class="cky-btn-revisit-wrapper" style="position:fixed;bottom:10px;left:10px;width:40px;height:40px">C</div>'
              '<iframe src="https://www.googletagmanager.com/ns.html?id=GTM-X" height="60" width="60" style="display:block"></iframe>')
-HTML = f"<!doctype html><html><body style='margin:0'>{BODY}{IMGS}{EXTRA}</body></html>".encode()
+def page():
+    # The "random" role has a part that differs on every load (WooCommerce's random related products): a height that grows with each request.
+    random_part = ''
+    if role == 'random':
+        hits['n'] += 1
+        random_part = f'<div class="related" style="height:{100 + 10 * hits["n"]}px">related</div>'
+    return f"<!doctype html><html><body style='margin:0'>{BODY}{IMGS}{EXTRA}{random_part}</body></html>".encode()
 
 
 class H(BaseHTTPRequestHandler):
@@ -55,7 +62,7 @@ class H(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/html")
         self.end_headers()
-        self.wfile.write(HTML)
+        self.wfile.write(page())
 
     def log_message(self, *a):
         pass
@@ -64,10 +71,11 @@ class H(BaseHTTPRequestHandler):
 HTTPServer(("127.0.0.1", port), H).serve_forever()
 PY
 free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])'; }
-S=$(free_port); P=$(free_port); C=$(free_port)
+S=$(free_port); P=$(free_port); C=$(free_port); R=$(free_port)
 python3 "$T/server.py" staging "$S" & PIDS+=($!); disown
 python3 "$T/server.py" production "$P" & PIDS+=($!); disown
 python3 "$T/server.py" changed "$C" & PIDS+=($!); disown
+python3 "$T/server.py" random "$R" & PIDS+=($!); disown
 sleep 1
 sites() { FINGERPRINT_RETRY_PAUSE=0 bash "$REPO_ROOT/bin/deploy/fingerprint.sh" compare-sites "$@" --paths / --widths 1000; }
 
@@ -79,6 +87,11 @@ check "without FINGERPRINT_AUTH the Basic-auth staging site is not readable (so 
     "! sites http://127.0.0.1:$S http://127.0.0.1:$P > $T/o3 2>&1"
 check "a real text difference still fails when normalised" \
     "! sites http://127.0.0.1:$C http://127.0.0.1:$P > $T/o4 2>&1 && grep -q 'visible text differs' $T/o4"
+
+check "a part that changes on every load makes a site differ from itself" \
+    "! sites http://127.0.0.1:$R http://127.0.0.1:$R > $T/o5 2>&1 && grep -q DIFFERENT $T/o5"
+check "--hide '.related' hides it, so the same build compares equal to itself" \
+    "sites http://127.0.0.1:$R http://127.0.0.1:$R --hide '.related' > $T/o6 2>&1 && grep -q IDENTICAL $T/o6"
 
 echo "RESULT: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

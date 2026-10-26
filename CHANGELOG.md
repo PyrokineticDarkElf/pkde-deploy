@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026.10.26.4
+
+- `fingerprint.sh capture` and `compare-sites` take `--hide '.related,.upsells'` (from bb): CSS selectors hidden with `display:none` before measuring, for parts that change on every load by design (WooCommerce's related products are picked at random), so one build compares equal to itself (without it two captures of the same build differed in 115 positions). Hidden, not removed, so the other paths stay stable. A test with a part that changes on every request proves both sides: different without the option, identical with it.
+
 ## 2026.10.26.3
 
 - `seo/compare.py` (js): robots noise gone: while the new site is noindex (a non-production rebuild always is) robots is not compared and one NOTE line says how many URLs were skipped; `--cutover` compares robots and canonical strictly at go-live and fails a noindex on the new side; `--ignore robots,h1,...` leaves any field out on purpose.
