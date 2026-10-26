@@ -3,7 +3,8 @@
 # Layout fingerprint: proves that a change which must not alter the pages (moving code into a package) did not. Local, read-only (GET
 # requests and a headless Chrome).
 #
-#   bin/deploy/fingerprint.sh capture http://localhost:8092 before.json [--paths /,/block-demo/,/about/] [--widths 1440,390]
+#   bin/deploy/fingerprint.sh capture http://localhost:8092 before.json [--paths /,/block-demo/,/about/] [--widths 1440,390] [--hide '.related,.upsells']
+#   (--hide hides parts that change on every load by design, such as WooCommerce's random related products, so one build compares equal to itself)
 #   ... make the change, rebuild ...
 #   bin/deploy/fingerprint.sh capture http://localhost:8092 after.json  [same options]
 #   bin/deploy/fingerprint.sh compare before.json after.json [--tolerance 0]
