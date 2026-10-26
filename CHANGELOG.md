@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026.10.26.2
+
+- New `bin/deploy/seo/text_compare.py` (from el): for each path, the words of the page's visible `<main>` text that are on one side only, live against the rebuild, over HTTP (header, footer, scripts, styles, SVG and select options ignored; case, emoji and punctuation do not count). It is what a visitor reads, not the stored content. Exit 1 when a page differs or a request fails. Tests cover the comparison without a network.
+
 ## 2026.10.26.1
 
 - `seo/compare.py` reports a description that appears where the live page had none as `DESCRIPTION ADDED` and one that disappears as `DESCRIPTION REMOVED`, both failures: Rank Math's WooCommerce module hooks `rank_math/frontend/description` and prints fallbacks (a product's short description, an excerpt, "Products Archive - ...") the live site never had. Tests cover both.
