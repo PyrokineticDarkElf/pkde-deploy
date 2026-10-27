@@ -1,6 +1,24 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:recommended"
+  "extends": ["config:recommended"],
+  "enabledManagers": ["composer", "npm", "github-actions"],
+  "baseBranchPatterns": ["main"],
+  "timezone": "Europe/London",
+  "schedule": ["* * * * 1"],
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "schedule": ["at any time"],
+    "labels": ["security"]
+  },
+  "dependencyDashboard": true,
+  "automerge": false,
+  "prHourlyLimit": 2,
+  "packageRules": [
+    {
+      "description": "Pest 5 needs PHP 8.4; the packages' platform (composer.json config.platform.php) is 8.3, the same as 20i and CI",
+      "matchPackageNames": ["pestphp/pest"],
+      "allowedVersions": "<5"
+    }
   ]
 }

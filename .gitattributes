@@ -8,3 +8,4 @@
 /pint.json export-ignore
 /composer.lock export-ignore
 /bin/release.sh export-ignore
+/renovate.json export-ignore
