@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026.10.26.5
+
+- `seo/crawl.py --urls FILE` (from tcs): crawl exactly the paths in FILE, one per line, and follow no links: the rebuild checked on live's URL set, because a rebuild can hide pages (empty categories) that its own sitemap then lacks. The file comes from the path column of the live inventory; a live archive paged with a query string (WooCommerce's `?product-page=N`) stays in it with its query and is compared with `compare.py --include-query`. A test crawls a tiny local site both ways.
+- Renovate configuration for this repository (composer, npm and github-actions, Monday, vulnerability alerts, Pest below 5).
+
 ## 2026.10.26.4
 
 - `fingerprint.sh capture` and `compare-sites` take `--hide '.related,.upsells'` (from bb): CSS selectors hidden with `display:none` before measuring, for parts that change on every load by design (WooCommerce's related products are picked at random), so one build compares equal to itself (without it two captures of the same build differed in 115 positions). Hidden, not removed, so the other paths stay stable. A test with a part that changes on every request proves both sides: different without the option, identical with it.

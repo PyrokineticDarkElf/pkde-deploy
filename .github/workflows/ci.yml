@@ -55,6 +55,7 @@ jobs:
           bash tests/deploy/fingerprint-normalise.test.sh
           bash tests/deploy/seo-compare.test.sh
           bash tests/deploy/seo-text-compare.test.sh
+          bash tests/deploy/seo-crawl.test.sh
           python3 -m unittest discover -s tests/native
           # Runs the real deploy step against a throwaway local sshd; needs sshd's privilege-separation directory.
           sudo mkdir -p /run/sshd

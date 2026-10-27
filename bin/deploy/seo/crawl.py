@@ -8,7 +8,12 @@ Public pages only, no login, no personal data. One request every --delay seconds
 
   python3 vendor/pkde/deploy/bin/deploy/seo/crawl.py --base https://www.example.com --out docs/seo/baseline-YYYY-MM-DD/inventory-live
   python3 vendor/pkde/deploy/bin/deploy/seo/crawl.py --base http://localhost:8092 --out /tmp/inventory-new      # later, for the diff
+  python3 vendor/pkde/deploy/bin/deploy/seo/crawl.py --base http://localhost:8092 --urls paths.txt --out /tmp/inventory-new   # exactly live's URL set
   python3 vendor/pkde/deploy/bin/deploy/seo/compare.py docs/seo/baseline-YYYY-MM-DD/inventory-live.csv /tmp/inventory-new.csv
+
+--urls FILE (from tcs) crawls exactly the paths in FILE, one per line, and follows no links: the rebuild checked on live's URL set, because a
+rebuild can hide pages (empty categories) its own sitemap then lacks. Make the file from the baseline: the path column of inventory-live.csv.
+A live archive paged with a query string (WooCommerce's ?product-page=N) is in that file with its query string; compare it with --include-query.
 """
 import argparse, csv, gzip, html, json, re, sys, time
 from urllib.parse import urljoin, urlparse, urldefrag
@@ -78,6 +83,7 @@ def main():
     ap.add_argument('--delay', type=float, default=0.7)
     ap.add_argument('--follow', default='', help='regex of archive URL paths to follow, replacing the default')
     ap.add_argument('--probe', default='', help='extra comma-separated paths to request, for example /product/,/product-category/')
+    ap.add_argument('--urls', default='', help="a file with one path per line: crawl exactly these paths and follow no links (the rebuild checked on live's URL set)")
     ap.add_argument('--limit', type=int, default=0, help='stop after N URLs (testing)')
     a = ap.parse_args()
     base = a.base.rstrip('/')
@@ -95,12 +101,18 @@ def main():
             seen.add(u)
             queue.append((u, source))
 
-    for u in sitemap_urls(s, base, a.delay):
-        # A sitemap lists the site's own host; when crawling a local copy, point those URLs at --base.
-        add(urlparse(base)._replace(path=urlparse(u).path, query=urlparse(u).query).geturl(), 'sitemap')
-    for extra in ('/feed/', '/robots.txt', '/sitemap_index.xml', '/wp-json/', *a.probe.split(',')):
-        if extra:
-            add(base + extra, 'probe')
+    if a.urls:
+        with open(a.urls, encoding='utf-8') as handle:
+            for line in handle:
+                if line.strip().startswith('/'):
+                    add(base + line.strip(), 'list')
+    else:
+        for u in sitemap_urls(s, base, a.delay):
+            # A sitemap lists the site's own host; when crawling a local copy, point those URLs at --base.
+            add(urlparse(base)._replace(path=urlparse(u).path, query=urlparse(u).query).geturl(), 'sitemap')
+        for extra in ('/feed/', '/robots.txt', '/sitemap_index.xml', '/wp-json/', *a.probe.split(',')):
+            if extra:
+                add(base + extra, 'probe')
 
     rows, links = [], {}
     i = 0
@@ -126,7 +138,7 @@ def main():
             data, found = parse(r.text, r.url, host)
             row.update(data)
             links[url] = found
-            for l in found:
+            for l in [] if a.urls else found:
                 if FOLLOW.search(l) or re.search(r'/page/\d+/?$', l) and FOLLOW.search(l):
                     add(l, 'link')
         rows.append(row)
