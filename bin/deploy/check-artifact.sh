@@ -99,6 +99,18 @@ for p in "${required[@]}"; do
     fi
 done
 
+# Every .htaccess a plugin ships (Wordfence lib/, W3 Total Cache pub/ and ini/, ...) is that plugin's own access denial for its data and
+# include directories. The build tree has them; the artifact must too (an unanchored rsync exclude once dropped all of them: TCS-88).
+# Skipped when there is no web/app/plugins in the current directory (the check is run from the repo root in CI).
+if [ -d web/app/plugins ] || [ -d web/app/mu-plugins ]; then
+    while IFS= read -r p; do
+        if [ ! -e "$DIST/web/$p" ]; then
+            echo "::error::artifact is missing the plugin's own web/$p"
+            fail=1
+        fi
+    done < <(cd web && find app/plugins app/mu-plugins -name .htaccess -not -path '*/node_modules/*' 2>/dev/null | sort)
+fi
+
 if [ "$fail" -ne 0 ]; then
     echo "Artifact check FAILED" >&2
     exit 1

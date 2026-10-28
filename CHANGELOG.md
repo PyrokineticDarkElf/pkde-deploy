@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026.10.28
+
+- **Security fix (tcs audit, TCS-88; likely live on every site):** `assemble-artifact.sh` excluded `.htaccess` by bare name, so rsync dropped EVERY `.htaccess` under `web/`, including the plugins' own access denials (Wordfence `lib/`, `models/`, `waf/`..., W3 Total Cache `pub/` and `ini/`). Releases therefore shipped those data and include directories without the plugin's `Require all denied`. The exclude is now anchored (`/.htaccess`, only the docroot's own file, which lives in `shared/` on the server). `check-artifact.sh` now fails the build when a `.htaccess` that the build tree has under `web/app/plugins` or `web/app/mu-plugins` is missing from the artifact. A new test (`tests/deploy/assemble-artifact.test.sh`) builds a tree with fake plugins and checks both scripts. **Adopt: all sites, next push** (bump the deploy package and the workflow tag; sites on copies: take `assemble-artifact.sh` and `check-artifact.sh`). Then confirm on the server that e.g. `web/app/plugins/wordfence/lib/.htaccess` is present in the new release.
+
 ## 2026.10.26.5
 
 - `seo/crawl.py --urls FILE` (from tcs): crawl exactly the paths in FILE, one per line, and follow no links: the rebuild checked on live's URL set, because a rebuild can hide pages (empty categories) that its own sitemap then lacks. The file comes from the path column of the live inventory; a live archive paged with a query string (WooCommerce's `?product-page=N`) stays in it with its query and is compared with `compare.py --include-query`. A test crawls a tiny local site both ways.

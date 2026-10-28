@@ -39,7 +39,7 @@ rsync -a web/ "$DEST/web/" \
     --exclude '/demo-content.html' \
     --exclude '/nginx.conf' \
     --exclude '/.user.ini' \
-    --exclude '.htaccess' \
+    --exclude '/.htaccess' \
     --exclude '/app/themes/sage/node_modules' \
     --exclude '/app/themes/sage/public/hot' \
     --exclude '/app/themes/sage/package.json' \
@@ -59,9 +59,10 @@ rsync -a web/ "$DEST/web/" \
 # WordPress core's readme.html and license.txt are publicly served and reveal the exact version.
 rm -f "$DEST/web/wp/readme.html" "$DEST/web/wp/license.txt"
 
-# web/.htaccess.dist is deliberately NOT excluded ('.htaccess' above is an exact
-# name match): activate-release.sh seeds the server's shared .htaccess from it
-# once.
+# '/.htaccess' above is anchored to web/: only the docroot's own file (kept in shared/ on the server) is left out. An unanchored
+# '.htaccess' also dropped every plugin's own access denials (Wordfence lib/, W3 Total Cache pub/ and ini/), so releases shipped
+# without them (TCS-88); check-artifact.sh now requires each one the build tree has. web/.htaccess.dist is deliberately NOT excluded:
+# activate-release.sh seeds the server's shared .htaccess from it once.
 rsync -a vendor/ "$DEST/vendor/"
 rsync -a config/ "$DEST/config/"
 cp composer.json composer.lock wp-cli.yml "$DEST/"
