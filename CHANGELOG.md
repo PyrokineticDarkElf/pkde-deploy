@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026.10.28.1
+
+- **Security hardening of the reusable workflows (MGR-67: cs, rp, bb audits):**
+  - Every third-party action is pinned by commit SHA with the tag in a comment (`actions/checkout`, `actions/setup-node`, `shivammathur/setup-php`, `webfactory/ssh-agent`, which handles the deploy key); a tag can be moved. Renovate keeps the SHAs current.
+  - Every checkout sets `persist-credentials: false`, so the job token is not left in `.git/config` while `composer install` and `npm ci` run third-party code.
+  - **Host key pinning:** the deploy step uses the optional secret `PROD_SSH_KNOWN_HOSTS` / `STAGING_SSH_KNOWN_HOSTS` (the output of `ssh-keyscan -p PORT HOST`, taken once from a trusted network) with `StrictHostKeyChecking=yes`. Without it the key is still learned by `ssh-keyscan` on each run, with a warning that says it is trust on first use, so no site breaks on this bump.
+  - New test `tests/deploy/workflow-hardening.test.sh` (in CI): SHA pins, persist-credentials, a permissions block per workflow, host-key pinning.
+  - Checked and unchanged: all three workflows already have a top-level `permissions: contents: read`, and the deploy secrets are referenced only in the deploy steps (step-scoped, gated by a push to main or develop), never in the job env that runs `composer`/`npm`; so a same-repo pull request (Renovate) does not expose them to dependency install scripts, even though a caller forwards them.
+  **Adopt:** bump the deploy package and the workflow tag. To pin the host key: `ssh-keyscan -p PORT HOST` once from a trusted network, store the output as `PROD_SSH_KNOWN_HOSTS` (and `STAGING_SSH_KNOWN_HOSTS`), and pass it in the caller's `secrets:` block (the template's caller shows the lines). GitHub Environments for the PROD secrets stay a per-site owner decision.
+
 ## 2026.10.28
 
 - **Security fix (tcs audit, TCS-88; likely live on every site):** `assemble-artifact.sh` excluded `.htaccess` by bare name, so rsync dropped EVERY `.htaccess` under `web/`, including the plugins' own access denials (Wordfence `lib/`, `models/`, `waf/`..., W3 Total Cache `pub/` and `ini/`). Releases therefore shipped those data and include directories without the plugin's `Require all denied`. The exclude is now anchored (`/.htaccess`, only the docroot's own file, which lives in `shared/` on the server). `check-artifact.sh` now fails the build when a `.htaccess` that the build tree has under `web/app/plugins` or `web/app/mu-plugins` is missing from the artifact. A new test (`tests/deploy/assemble-artifact.test.sh`) builds a tree with fake plugins and checks both scripts. **Adopt: all sites, next push** (bump the deploy package and the workflow tag; sites on copies: take `assemble-artifact.sh` and `check-artifact.sh`). Then confirm on the server that e.g. `web/app/plugins/wordfence/lib/.htaccess` is present in the new release.

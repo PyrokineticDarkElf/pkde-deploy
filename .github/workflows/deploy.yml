@@ -53,11 +53,13 @@ on:
       PROD_SSH_PORT: { required: false }
       PROD_SSH_USER: { required: false }
       PROD_DEPLOY_PATH: { required: false }
+      PROD_SSH_KNOWN_HOSTS: { required: false }
       STAGING_SSH_KEY: { required: false }
       STAGING_SSH_HOST: { required: false }
       STAGING_SSH_PORT: { required: false }
       STAGING_SSH_USER: { required: false }
       STAGING_DEPLOY_PATH: { required: false }
+      STAGING_SSH_KNOWN_HOSTS: { required: false }
 
 permissions:
   contents: read
@@ -77,11 +79,13 @@ jobs:
       # Deploy also needs the caller's DEPLOY_ENABLED variable (passed as an input), a push or manual run on main or develop.
       DEPLOY: ${{ inputs.deploy-allowed && inputs.deploy-enabled == 'true' && github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          persist-credentials: false
 
       # The tools at the version of this workflow. This repository is public, so the checkout needs no token.
       - name: Check out the pipeline tools (pkde-deploy)
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
         with:
           repository: PyrokineticDarkElf/pkde-deploy
           ref: ${{ env.PKDE_DEPLOY_VERSION }}
@@ -97,7 +101,7 @@ jobs:
         run: docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:1.7.12 -color
 
       - name: Set up PHP
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962  # v2
         with:
           php-version: ${{ inputs.php-version }}
           extensions: mysqli, pdo_mysql, gd, zip, intl, exif, opcache, bcmath, soap, imagick
@@ -108,7 +112,7 @@ jobs:
       # and Renovate's npm/Vite PRs are really built. Only the production Composer install, the artifact assembly/check and the
       # deploy steps below stay off for the starter (BUILD): they need a server.
       - name: Set up Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7
         with:
           node-version: ${{ inputs.node-version }}
           cache: npm
@@ -183,7 +187,7 @@ jobs:
       # non-empty, so an unset PROD_* secret can never fall through to the staging server.
       - name: Load deploy SSH key
         if: env.DEPLOY == 'true'
-        uses: webfactory/ssh-agent@v0.10.0
+        uses: webfactory/ssh-agent@e83874834305fe9a4a2997156cb26c5de65a8555  # v0.10.0
         with:
           ssh-private-key: ${{ secrets[format('{0}_SSH_KEY', github.ref == 'refs/heads/main' && 'PROD' || 'STAGING')] }}
 
@@ -195,6 +199,7 @@ jobs:
           SSH_PORT: ${{ secrets[format('{0}_SSH_PORT', github.ref == 'refs/heads/main' && 'PROD' || 'STAGING')] }}
           SSH_USER: ${{ secrets[format('{0}_SSH_USER', github.ref == 'refs/heads/main' && 'PROD' || 'STAGING')] }}
           DEPLOY_PATH: ${{ secrets[format('{0}_DEPLOY_PATH', github.ref == 'refs/heads/main' && 'PROD' || 'STAGING')] }}
+          SSH_KNOWN_HOSTS: ${{ secrets[format('{0}_SSH_KNOWN_HOSTS', github.ref == 'refs/heads/main' && 'PROD' || 'STAGING')] }}
         run: |
           set -e
           source "$TOOLS/bin/deploy/retry.sh"
@@ -211,9 +216,18 @@ jobs:
             -o ControlMaster=auto -o ControlPath=~/.ssh/cm-%C -o ControlPersist=10m)
           mkdir -p ~/.ssh
           trap 'ssh "${SSH_OPTS[@]}" -p "$SSH_PORT" -O exit "$SSH_USER@$SSH_HOST" 2>/dev/null || true' EXIT
-          # ssh-keyscan exits 0 even when it timed out and found nothing, so an empty answer counts as a failure.
-          # shellcheck disable=SC2016
-          retry "ssh-keyscan" bash -c 'keys=$(ssh-keyscan -T 20 -p "$1" -H "$2") && [ -n "$keys" ] && echo "$keys" >> ~/.ssh/known_hosts' _ "$SSH_PORT" "$SSH_HOST"
+          # The server's host key. Pinned when the caller passes <PROD|STAGING>_SSH_KNOWN_HOSTS (the output of `ssh-keyscan -p PORT HOST`
+          # taken once from a trusted network): the connection then fails if the key differs. Without it the key is learned by
+          # ssh-keyscan on this run (trust on first use, which a network attacker between the runner and the host could answer), and a
+          # warning says so. ssh-keyscan exits 0 even when it timed out and found nothing, so an empty answer counts as a failure.
+          if [ -n "${SSH_KNOWN_HOSTS:-}" ]; then
+            printf '%s\n' "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
+            SSH_OPTS+=(-o StrictHostKeyChecking=yes)
+          else
+            echo "::warning::No ${GITHUB_REF_NAME} SSH_KNOWN_HOSTS secret: the server's host key is learned by ssh-keyscan on every run (trust on first use). Store its output as the secret to pin it."
+            # shellcheck disable=SC2016
+            retry "ssh-keyscan" bash -c 'keys=$(ssh-keyscan -T 20 -p "$1" -H "$2") && [ -n "$keys" ] && echo "$keys" >> ~/.ssh/known_hosts' _ "$SSH_PORT" "$SSH_HOST"
+          fi
           retry "Creating the release directory" ssh "${SSH_OPTS[@]}" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p $DEPLOY_PATH/releases/$release"
           retry "rsync of the build" rsync -az --delete -e "ssh ${SSH_OPTS[*]} -p $SSH_PORT" dist/ "$SSH_USER@$SSH_HOST:$DEPLOY_PATH/releases/$release/"
           retry "Copying activate-release.sh" scp "${SSH_OPTS[@]}" -P "$SSH_PORT" "$TOOLS/bin/deploy/activate-release.sh" "$SSH_USER@$SSH_HOST:$DEPLOY_PATH/activate-release.sh"

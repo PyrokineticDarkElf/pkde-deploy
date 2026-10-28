@@ -32,10 +32,12 @@ jobs:
   audit:
     runs-on: ${{ inputs.runs-on }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          persist-credentials: false
 
       - name: Check out the pipeline tools (pkde-deploy)
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
         with:
           repository: PyrokineticDarkElf/pkde-deploy
           ref: ${{ env.PKDE_DEPLOY_VERSION }}
@@ -43,14 +45,14 @@ jobs:
           persist-credentials: false
 
       - name: Set up PHP
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962  # v2
         with:
           php-version: ${{ inputs.php-version }}
           tools: composer:v2
           coverage: none
 
       - name: Set up Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7
         with:
           node-version: ${{ inputs.node-version }}
 
