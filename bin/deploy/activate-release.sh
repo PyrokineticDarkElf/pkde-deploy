@@ -400,7 +400,7 @@ fi
 # consulted, so a working rule answers 403 and a missing one 404. A mismatch warns loudly and never fails the deploy (the release is
 # already live); the warning names the path so a person can look. Skipped without WP_HOME or curl.
 probe_hardening() {
-    local url token code path expected failed=0
+    local url token code path expected failed=0 theme muplugin upload_file="" probes=()
     url="$(sed -n 's/^WP_HOME=//p' "$SHARED_DIR/.env" 2>/dev/null | tr -d "\"'\r" | head -1)" || url=""
     url="${url%/}"
     if [ -z "$url" ] || ! command -v curl >/dev/null 2>&1; then
@@ -408,7 +408,20 @@ probe_hardening() {
         return 0
     fi
     token="$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
-    for path in "/app/uploads/pkde-probe-$token.php" "/app/themes/pkde-probe/functions.php" "/app/mu-plugins/pkde-probe-$token.php" "/wp/xmlrpc.php"; do
+
+    # Files that EXIST: 20i's front end answers 404 for a missing file before .htaccess runs (bp saw it on staging), so a path that does not
+    # exist proves nothing. An upload PHP file is written, requested and removed; the theme, mu-plugin and XML-RPC files are already there.
+    if [ -d "$SHARED_DIR/uploads" ] && printf '%s\n' '<?php echo "pkde-probe";' > "$SHARED_DIR/uploads/pkde-probe-$token.php" 2>/dev/null; then
+        upload_file="$SHARED_DIR/uploads/pkde-probe-$token.php"
+        probes+=("/app/uploads/pkde-probe-$token.php")
+    fi
+    theme="$(ls -d "$RELEASE_DIR"/web/app/themes/*/functions.php 2>/dev/null | head -1)" || theme=""
+    if [ -n "$theme" ]; then probes+=("/app/themes/$(basename "$(dirname "$theme")")/functions.php"); fi
+    muplugin="$(ls "$RELEASE_DIR"/web/app/mu-plugins/pkde-platform/pkde-platform.php "$RELEASE_DIR"/web/app/mu-plugins/*.php 2>/dev/null | head -1)" || muplugin=""
+    if [ -n "$muplugin" ]; then probes+=("${muplugin#"$RELEASE_DIR"/web}"); fi
+    if [ -e "$RELEASE_DIR/web/wp/xmlrpc.php" ]; then probes+=("/wp/xmlrpc.php"); fi
+
+    for path in "${probes[@]+"${probes[@]}"}"; do
         expected=403
         code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$url$path" 2>/dev/null)" || code="000"
         if [ "$code" != "$expected" ]; then
@@ -416,12 +429,16 @@ probe_hardening() {
             code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$url$path" 2>/dev/null)" || code="000"
         fi
         if [ "$code" != "$expected" ]; then
-            echo "WARN: hardening probe: $path answered $code, expected $expected. The .htaccess deny rule is NOT enforced." >&2
+            echo "WARN: hardening probe: $path (a file that exists) answered $code, expected $expected. The .htaccess deny rule is NOT enforced." >&2
             failed=1
         fi
     done
-    if [ "$failed" -eq 0 ]; then
-        echo "Hardening probe: uploads PHP, theme PHP, mu-plugins and xmlrpc.php all answer 403"
+    if [ -n "$upload_file" ]; then rm -f "$upload_file"; fi
+
+    if [ "${#probes[@]}" -eq 0 ]; then
+        echo "WARN: hardening probe: nothing to probe was found in the release; the deny rules were NOT verified." >&2
+    elif [ "$failed" -eq 0 ]; then
+        echo "Hardening probe: ${#probes[@]} existing PHP file(s) (uploads, theme, mu-plugin, xmlrpc.php) all answer 403"
     else
         echo "WARN: ================================================================" >&2
         echo "WARN: the site hardening in .htaccess is not being enforced by the web server (see above)." >&2

@@ -55,6 +55,7 @@ check() { if eval "$2"; then ok "$1"; else bad "$1"; fi; }
 mkrelease() { # <name> : fresh CI artifact
   mkdir -p $BASE/releases/$1/web/app/themes/sage $BASE/releases/$1/vendor $BASE/releases/$1/config
   echo "# dist" > $BASE/releases/$1/web/.htaccess.dist
+  echo "<?php" > $BASE/releases/$1/web/app/themes/sage/functions.php
 }
 
 echo "=== Scenario 1: FIRST EVER deploy (no current, empty shared) ==="
@@ -198,7 +199,7 @@ OPCACHE_RETRY_INTERVAL=0 bash $S $BASE R24 5 >$T/s9e.log 2>&1; rc=$?
 check "404 twice then ok: exit 0 and the success message, no warning" "[ $rc -eq 0 ] && grep -q 'Web opcache reset; the web server serves release R24' $T/s9e.log && ! grep -q 'WARN: could not request' $T/s9e.log"
 check "404 twice then ok: three requests, the file existed at each" "[ \$(grep -c '^https.*zz-opcache' $T/curl.log) -eq 3 ] && [ \$(grep -c '^EXISTS 1' $T/curl.log) -eq 3 ]"
 check "404 twice then ok: the file is removed afterwards" "[ -z \"\$(ls $BASE/releases/R24/web/zz-opcache-*.php 2>/dev/null)\" ]"
-check "hardening probe: requests uploads PHP, theme PHP, mu-plugins and xmlrpc.php, and says so when they do not answer 403" "grep -q 'pkde-probe' $T/curl.log && grep -q 'xmlrpc.php' $T/curl.log && grep -q 'hardening probe: .* NOT enforced' $T/s9e.log"
+check "hardening probe: requests an uploads PHP file it wrote, the theme functions.php, and a mu-plugin file, and says so when they do not answer 403" "grep -q 'pkde-probe' $T/curl.log && grep -q 'functions.php' $T/curl.log && grep -q 'hardening probe: .* NOT enforced' $T/s9e.log && [ -z \"\$(ls $BASE/shared/uploads/pkde-probe-*.php 2>/dev/null)\" ]"
 
 : > $T/curl.log; echo notfound > $T/curl-mode; mkrelease R25
 OPCACHE_RETRY_INTERVAL=0 OPCACHE_RETRY_ATTEMPTS=4 bash $S $BASE R25 5 >$T/s9f.log 2>&1; rc=$?

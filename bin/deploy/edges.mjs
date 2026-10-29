@@ -54,11 +54,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         // Page containers in <main>: any block that is centred with equal margins and is narrower than the viewport. A narrower
         // column INSIDE a container that already matches the header (prose, a hero's text) is by design and skipped; a container that
         // starts at the top and differs (the 404's old max-w-2xl wrapper) is what this finds.
+        const containerish = (el) => /(^|\s)(mx-auto|max-w-\S+)(\s|$)/.test(String(el.className));
         const near = (x, y) => Math.abs(x - y) <= 1;
         const centred = (el) => {
           const s = getComputedStyle(el);
           const r = el.getBoundingClientRect();
-          return s.display !== 'inline' && r.width > 200 && r.width < innerWidth - 2 && r.left > 1 && near(r.left, innerWidth - r.right);
+          return s.display !== 'inline' && (r.width > 200 || containerish(el)) && r.width < innerWidth - 2 && r.left > 1 && near(r.left, innerWidth - r.right);
         };
         // A container matches when its content box sits on the header's content edges, or its border box on the header container's own box
         // (a card or wide panel: its background spans the container, its padding is the gutter).
@@ -72,12 +73,30 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         // A full-bleed block (hero, loop panel) positions its own inner content; the Section rule below covers Sections.
         const fullBleed = (el) => { const r = el.getBoundingClientRect(); return r.left <= 1 && r.right >= innerWidth - 1 && !el.matches('.wp-block-sage-section'); };
         const main = document.querySelector('main') || document.body;
-        main.querySelectorAll('*').forEach((el) => {
-          if (!visible(el) || !centred(el) || el.closest('.wp-block-sage-section') || matchesHeader(el)) return;
-          for (let p = el.parentElement; p && p !== main.parentElement; p = p.parentElement) {
-            if (p !== document.body && p !== main && (matchesHeader(p) || (fullBleed(p) && p.parentElement !== main && !p.matches('.page-content')))) return; // inside a matching container or a full-bleed block
+        // The page's own text column: a child of the page content grid that sits in its content track and carries no container classes of its own
+        // is prose, narrower than the header by design (48rem). One that carries mx-auto or max-w-* is a container somebody sized by hand (bp's
+        // home intro: a section of `mx-auto max-w-3xl px-6` stored in the page content) and is checked like any other container.
+        const proseColumn = (el) => {
+          for (let a = el; a && a !== main; a = a.parentElement) {
+            if (a.parentElement && a.parentElement.classList.contains('content-grid')) {
+              const col = getComputedStyle(a).gridColumnStart;
+              return /content/.test(col) && ! /wide|full/.test(col) && ! containerish(a);
+            }
           }
-          { const b = el.getBoundingClientRect(); items.push({ label: 'main ' + label(el), box: `${Math.round(b.left)}..${Math.round(b.right)}`, ...content(el) }); }
+          return false;
+        };
+        const candidates = [];
+        main.querySelectorAll('*').forEach((el) => {
+          if (! visible(el) || ! centred(el) || el.closest('.wp-block-sage-section') || matchesHeader(el) || proseColumn(el)) return;
+          for (let p = el.parentElement; p && p !== main.parentElement; p = p.parentElement) {
+            if (p !== document.body && p !== main && (matchesHeader(p) || (fullBleed(p) && p.parentElement !== main && ! p.matches('.page-content')))) return; // inside a matching container or a full-bleed block
+          }
+          candidates.push(el);
+        });
+        // Only the outermost offender is reported: its children are narrow because it is.
+        candidates.filter((el) => ! candidates.some((o) => o !== el && o.contains(el))).forEach((el) => {
+          const b = el.getBoundingClientRect();
+          items.push({ label: 'main ' + label(el), box: `${Math.round(b.left)}..${Math.round(b.right)}`, ...content(el) });
         });
         document.querySelectorAll('.wp-block-sage-section.is-layout-constrained').forEach((section) => {
           for (const child of section.children) {

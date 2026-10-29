@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026.10.29.2
+
+From the bp Phase C trial (first site on the packages). **Adopt:** bump the package and the workflow tag.
+
+- **The hardening probe asks for files that exist.** 20i's front end answers 404 for a missing file before `.htaccess` runs, so probing paths that do not exist warned falsely ("NOT enforced") on staging. It now writes a harmless PHP file into the shared uploads, requests it, and removes it, and requests the theme's `functions.php`, a mu-plugin file and `/wp/xmlrpc.php`, which are already there; each must answer 403. A 404 for an existing file is reported as such. With nothing to probe it says so.
+- **`fingerprint.sh edges` reports containers, not columns (bp).** It listed every narrow inner column and every 48rem prose page (146 lines for one privacy policy) and buried the one real miss, a home-page intro stored in the page content as `mx-auto max-w-3xl px-6` (an `mx-auto` grid item shrinks to fit-content, so it measured 88px wide and was skipped as "too small to be a container"). Now only the outermost offending element is printed, the page's own prose column (a child of the content grid in its content track with no container classes) is by design and skipped, and a hand-sized container (`mx-auto` or `max-w-*`) is checked whatever its width. Normal pages print nothing; the bp case prints one line.
+
 ## 2026.10.29.1
 
 ADOPT ALL audit-fix batch (MGR-67, TPL-138; bp, js, tcs, cs, rp audits). **Adopt:** bump the package and the workflow tag; sites on copies take `activate-release.sh`, `drift-check.php`, `check-artifact.sh` and (new) `edges.mjs`. Needs pkde/platform 2026.10.29 or later in the same push (the artifact check now requires `safe-svg.php` and `login-slug.php`, which every platform since 2026.10.23.2 ships).
