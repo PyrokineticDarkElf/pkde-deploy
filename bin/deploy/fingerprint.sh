@@ -8,6 +8,8 @@
 #   ... make the change, rebuild ...
 #   bin/deploy/fingerprint.sh capture http://localhost:8092 after.json  [same options]
 #   bin/deploy/fingerprint.sh compare before.json after.json [--tolerance 0]
+#   bin/deploy/fingerprint.sh edges http://localhost:8092 [--paths /,/about/,/no-such-page/] [--widths 1440,390] [--tolerance 1]
+#   (edges: the header, page containers, a Section's content and the footer must start and end at the same x; exit 1 and a list otherwise)
 #   bin/deploy/fingerprint.sh compare-sites https://staging.example.com https://www.example.com [--paths /,/about/] [--widths 1440,390] [--tolerance 0]
 #
 # compare-sites captures both sites and compares them in one command: the REQUIRED check before a production release (staging is
@@ -24,8 +26,9 @@ MODE="${1:-}"
 case "$MODE" in
     capture) URL="${2:-}"; OUT="${3:-}"; [ -n "$URL" ] && [ -n "$OUT" ] || { echo "usage: fingerprint.sh capture <url> <out.json> [options]" >&2; exit 2; }; shift 3 ;;
     compare-sites) SITE_A="${2:-}"; SITE_B="${3:-}"; [ -n "$SITE_A" ] && [ -n "$SITE_B" ] || { echo "usage: fingerprint.sh compare-sites <url-a> <url-b> [--paths ...] [--widths ...] [--tolerance N]" >&2; exit 2; }; shift 3 ;;
+    edges) URL="${2:-}"; [ -n "$URL" ] || { echo "usage: fingerprint.sh edges <url> [--paths ...] [--widths ...] [--tolerance N]" >&2; exit 2; }; shift 2 ;;
     compare) A="${2:-}"; B="${3:-}"; [ -f "$A" ] && [ -f "$B" ] || { echo "usage: fingerprint.sh compare <a.json> <b.json>" >&2; exit 2; }; shift 3 ;;
-    *) sed -n '3,21p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+    *) sed -n '3,23p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac
 command -v node >/dev/null 2>&1 || { echo "Node is required (20+)." >&2; exit 2; }
 
@@ -47,6 +50,11 @@ if [ ! -d "$TOOLS/node_modules/puppeteer-core" ]; then
     (cd "$TOOLS" && npm install --no-audit --no-fund --loglevel=error) || { echo "tool install failed" >&2; exit 2; }
 fi
 cp "$HERE/fingerprint.mjs" "$TOOLS/fingerprint.mjs"
+cp "$HERE/edges.mjs" "$TOOLS/edges.mjs"
+if [ "$MODE" = edges ]; then
+    (cd "$TOOLS" && exec node edges.mjs --url "$URL" --chrome "$CHROME" "$@")
+    exit $?
+fi
 case "${OUT:-}" in /*|"") ;; *) OUT="$PWD/$OUT" ;; esac
 # The first capture after a build sometimes crashes in node; a second one works. Retry once, then report the failure.
 capture() { # <url> <out> [options]

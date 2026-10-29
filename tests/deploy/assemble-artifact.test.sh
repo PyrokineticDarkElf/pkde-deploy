@@ -20,7 +20,8 @@ for f in web/.htaccess.dist web/index.php web/wp-config.php web/wp/wp-load.php v
          composer.json composer.lock wp-cli.yml web/app/themes/sage/public/build/manifest.json web/app/themes/sage/vendor/autoload.php \
          web/app/mu-plugins/bedrock-autoloader.php web/app/mu-plugins/pkde-platform/pkde-platform.php \
          web/app/mu-plugins/pkde-platform/modules/staging-mail-guard.php web/app/themes/sage/vendor/pkde/sage-kit/src/KitServiceProvider.php \
-         web/app/mu-plugins/pkde-platform/modules/private-usernames/private-usernames.php; do
+         web/app/mu-plugins/pkde-platform/modules/private-usernames/private-usernames.php \
+         web/app/mu-plugins/pkde-platform/modules/safe-svg.php web/app/mu-plugins/pkde-platform/modules/login-slug.php; do
   echo x > "$site/$f"
 done
 echo 'Require all denied' > "$site/web/app/plugins/wordfence/lib/.htaccess"

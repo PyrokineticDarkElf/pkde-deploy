@@ -115,6 +115,7 @@ check "Upload Hardening block present exactly once" "[ \$(grep -c 'BEGIN Upload 
 check "Upload Hardening denies PHP in uploads and in themes" "grep -qF 'RewriteRule ^app/uploads/.*' $BASE/shared/.htaccess && grep -qF 'RewriteRule ^app/themes/[^/]+/.*' $BASE/shared/.htaccess"
 check "Upload Hardening sandboxes SVG" "grep -q 'X-Content-Type-Options' $BASE/shared/.htaccess && grep -q 'sandbox' $BASE/shared/.htaccess"
 check "Upload Cache block present exactly once" "[ \$(grep -c 'BEGIN Upload Cache' $BASE/shared/.htaccess) -eq 1 ]"
+check "XML-RPC Hardening block present exactly once" "[ \$(grep -c 'BEGIN XML-RPC Hardening' $BASE/shared/.htaccess) -eq 1 ] && grep -q 'Files \"xmlrpc.php\"' $BASE/shared/.htaccess"
 check "Upload Cache: 30 days for uploads, one year immutable for ?ver= assets" "grep -q 'public, max-age=2592000\" env=PKDE_UPLOAD_ASSET' $BASE/shared/.htaccess && grep -q 'immutable\" env=PKDE_VER_ASSET' $BASE/shared/.htaccess"
 
 echo "=== Scenario 4: ROLLBACK to R1 (an older, pre-change release with real dirs) ==="
@@ -195,18 +196,19 @@ check "wrong release: the file is removed" "[ -z \"\$(ls $BASE/releases/R22/web/
 : > $T/curl.log; echo notfound2 > $T/curl-mode; mkrelease R24
 OPCACHE_RETRY_INTERVAL=0 bash $S $BASE R24 5 >$T/s9e.log 2>&1; rc=$?
 check "404 twice then ok: exit 0 and the success message, no warning" "[ $rc -eq 0 ] && grep -q 'Web opcache reset; the web server serves release R24' $T/s9e.log && ! grep -q 'WARN: could not request' $T/s9e.log"
-check "404 twice then ok: three requests, the file existed at each" "[ \$(grep -c '^https' $T/curl.log) -eq 3 ] && [ \$(grep -c '^EXISTS 1' $T/curl.log) -eq 3 ]"
+check "404 twice then ok: three requests, the file existed at each" "[ \$(grep -c '^https.*zz-opcache' $T/curl.log) -eq 3 ] && [ \$(grep -c '^EXISTS 1' $T/curl.log) -eq 3 ]"
 check "404 twice then ok: the file is removed afterwards" "[ -z \"\$(ls $BASE/releases/R24/web/zz-opcache-*.php 2>/dev/null)\" ]"
+check "hardening probe: requests uploads PHP, theme PHP, mu-plugins and xmlrpc.php, and says so when they do not answer 403" "grep -q 'pkde-probe' $T/curl.log && grep -q 'xmlrpc.php' $T/curl.log && grep -q 'hardening probe: .* NOT enforced' $T/s9e.log"
 
 : > $T/curl.log; echo notfound > $T/curl-mode; mkrelease R25
 OPCACHE_RETRY_INTERVAL=0 OPCACHE_RETRY_ATTEMPTS=4 bash $S $BASE R25 5 >$T/s9f.log 2>&1; rc=$?
 check "permanent 404: exit 0, current -> R25, one warning after the tries" "[ $rc -eq 0 ] && [ \"\$(readlink $BASE/current)\" = $BASE/releases/R25 ] && grep -q 'still answered 404 for the probe after 4 tries' $T/s9f.log && grep -q 'PREVIOUS release' $T/s9f.log"
-check "permanent 404: exactly 4 requests" "[ \$(grep -c '^https' $T/curl.log) -eq 4 ]"
+check "permanent 404: exactly 4 requests" "[ \$(grep -c '^https.*zz-opcache' $T/curl.log) -eq 4 ]"
 check "permanent 404: the file is removed" "[ -z \"\$(ls $BASE/releases/R25/web/zz-opcache-*.php 2>/dev/null)\" ]"
 
 : > $T/curl.log; echo fail > $T/curl-mode; mkrelease R26
 OPCACHE_RETRY_INTERVAL=0 bash $S $BASE R26 5 >$T/s9g.log 2>&1
-check "403 is not a lag: one request, warned at once" "[ \$(grep -c '^https' $T/curl.log) -eq 1 ] && grep -q 'could not request the opcache reset' $T/s9g.log"
+check "403 is not a lag: one request, warned at once" "[ \$(grep -c '^https.*zz-opcache' $T/curl.log) -eq 1 ] && grep -q 'could not request the opcache reset' $T/s9g.log"
 
 echo "WP_ENV=production" > $BASE/shared/.env; : > $T/curl.log; mkrelease R23
 bash $S $BASE R23 5 >$T/s9d.log 2>&1; rc=$?

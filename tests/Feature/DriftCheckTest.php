@@ -282,3 +282,25 @@ it('requires the login slug to be managed by .env, and never prints it', functio
     $facts['hide_login']['active'] = false;
     expect(pkdeStatuses($facts))->not->toHaveKey($check);
 });
+
+it('fails a .env split between environments: WP_ENV, DISALLOW_INDEXING and STAGING_MAIL_TO (bp, MGR-67)', function () {
+    $good = array_merge(pkdeGoodFacts(), ['wp_env' => 'production', 'disallow_indexing' => false, 'staging_mail_to' => false]);
+    expect(array_keys(pkdeStatuses($good), 'FAIL'))->toBe([]);
+
+    $hidden = pkdeStatuses(array_merge($good, ['disallow_indexing' => true]));
+    expect($hidden['DISALLOW_INDEXING is off on production'])->toBe('FAIL');
+
+    $mismatch = pkdeStatuses(array_merge($good, ['wp_env' => 'staging', 'disallow_indexing' => true]));
+    expect($mismatch['WP_ENV and WP_ENVIRONMENT_TYPE agree'])->toBe('FAIL');
+
+    $copied = pkdeStatuses(array_merge($good, ['staging_mail_to' => true]));
+    expect($copied['STAGING_MAIL_TO is not set on production'])->toBe('FAIL');
+
+    $staging = pkdeStatuses(array_merge(pkdeGoodFacts(), ['env' => 'staging', 'wp_env' => 'staging', 'disallow_indexing' => false, 'staging_mail_to' => false]));
+    expect($staging['DISALLOW_INDEXING is on for staging'])->toBe('FAIL')
+        ->and($staging['STAGING_MAIL_TO'])->toBe('PASS');
+});
+
+it('does not evaluate the environment rows when the facts carry no WP_ENV', function () {
+    expect(pkdeStatuses(pkdeGoodFacts()))->not->toHaveKey('WP_ENV and WP_ENVIRONMENT_TYPE agree');
+});

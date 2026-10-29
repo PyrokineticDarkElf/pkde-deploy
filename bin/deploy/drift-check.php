@@ -87,6 +87,23 @@ function pkde_drift_evaluate(array $f): array
         $add($ok ? 'PASS' : ($devSkip && $dev ? 'SKIP' : 'FAIL'), $check, $ok ? '' : $detail);
     };
 
+    // The environment as .env declares it (MGR-67, bp): a .env split between environments (a production WP_ENV with a staging
+    // DISALLOW_INDEXING, or a staging file copied to production) looks clean row by row. Only when the facts carry WP_ENV.
+    if (array_key_exists('wp_env', $f)) {
+        $wpEnv = (string) $f['wp_env'];
+        $type = (string) ($f['env'] ?? '');
+        $expected = ['production' => ['production'], 'staging' => ['staging'], 'development' => ['local', 'development']][$wpEnv] ?? null;
+        $cmp('WP_ENV and WP_ENVIRONMENT_TYPE agree', $expected !== null && in_array($type, $expected, true), "WP_ENV is '$wpEnv' but the environment type is '$type'");
+        $indexing = ! empty($f['disallow_indexing']);
+        if ($wpEnv === 'production') {
+            $cmp('DISALLOW_INDEXING is off on production', ! $indexing, 'DISALLOW_INDEXING is true: search engines are blocked');
+            $cmp('STAGING_MAIL_TO is not set on production', empty($f['staging_mail_to']), 'a staging variable is set (a staging .env copied here?)');
+        } elseif ($wpEnv === 'staging') {
+            $cmp('DISALLOW_INDEXING is on for staging', $indexing, 'DISALLOW_INDEXING is not true: staging can be indexed');
+            $add('PASS', 'STAGING_MAIL_TO', ! empty($f['staging_mail_to']) ? 'staging mail goes to the one test address' : 'staging mail is suppressed (no STAGING_MAIL_TO)');
+        }
+    }
+
     // Wordfence is inactive on staging by design (by design): there it is a SKIP, not a FAIL, and only while it really is inactive.
     // An ACTIVE Wordfence on staging is still held to the standard.
     $wfOffOnStaging = ($f['env'] ?? '') === 'staging' && ! in_array('wordfence', (array) ($f['active_plugins'] ?? []), true);
@@ -265,6 +282,9 @@ function pkde_drift_collect(): array
 
     return [
         'env' => wp_get_environment_type(),
+        'wp_env' => $const('WP_ENV'),
+        'disallow_indexing' => defined('DISALLOW_INDEXING') && DISALLOW_INDEXING,
+        'staging_mail_to' => $const('STAGING_MAIL_TO') !== '' || trim((string) getenv('STAGING_MAIL_TO')) !== '',
         'admin_email' => (string) get_option('admin_email'),
         'blogname' => (string) get_option('blogname'),
         'blogdescription' => (string) get_option('blogdescription'),

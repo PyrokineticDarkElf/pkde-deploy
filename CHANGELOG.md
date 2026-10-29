@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026.10.29.1
+
+ADOPT ALL audit-fix batch (MGR-67, TPL-138; bp, js, tcs, cs, rp audits). **Adopt:** bump the package and the workflow tag; sites on copies take `activate-release.sh`, `drift-check.php`, `check-artifact.sh` and (new) `edges.mjs`. Needs pkde/platform 2026.10.29 or later in the same push (the artifact check now requires `safe-svg.php` and `login-slug.php`, which every platform since 2026.10.23.2 ships).
+
+- **Deploy proves its hardening (bp 3, js 3):** after the `.htaccess` blocks are written, `activate-release.sh` requests four paths that cannot exist (a PHP file in `app/uploads`, theme PHP, a `mu-plugins` PHP file, `/wp/xmlrpc.php`) and warns loudly, naming the path, when any does not answer 403. Before, only the marker was checked, which proves nothing when the server ignores the file. A warning, never a failed deploy (the release is already live).
+- **XML-RPC denied at the server (owner decision):** a new `# BEGIN XML-RPC Hardening` block denies `xmlrpc.php` (platform 2026.10.29 also switches XML-RPC off in PHP). A site that opts in with `ALLOW_XMLRPC=true` deletes this block from its shared `.htaccess`.
+- **Drift check reports the .env state (bp 2):** `WP_ENV` must agree with `WP_ENVIRONMENT_TYPE`; production must not have `DISALLOW_INDEXING` or `STAGING_MAIL_TO`; staging must have `DISALLOW_INDEXING`, and reports whether staging mail is suppressed or redirected. A `.env` split between environments no longer looks clean row by row.
+- **Workflow (bp 4, js 2):** `npm ci --ignore-scripts` (the build needs no install script), and a step before the SSH key loads that fails when the pipeline tools in `.pkde-deploy` were modified by the build or are not at the tag.
+- **check-artifact requires the security modules (tcs):** `safe-svg.php` and `login-slug.php` must be in the artifact.
+- **New `fingerprint.sh edges` (MGR-62):** measures the content edges of the header, page containers, Section children and the footer at several widths and fails when one differs by more than a pixel; narrow text columns inside a matching container and full-bleed blocks are by design. Run it before and after a switch to the packages (docs/process/phase-c-switch.md in the template).
+- GitHub Environments for the PROD secrets stay a per-site owner decision (they would add a required reviewer to every production deploy); the workflow already gives the deploy secrets to the deploy steps only. Branch protection is not available on GitHub Free: accepted risk (template ADR).
+
 ## 2026.10.29
 
 - **Two new `.htaccess` blocks, added to every site on its next deploy (a separate marker each, so they arrive whatever the Site Hardening block holds):**

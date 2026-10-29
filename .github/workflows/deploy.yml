@@ -146,8 +146,10 @@ jobs:
         run: bash "$GITHUB_WORKSPACE/.pkde-deploy/bin/deploy/composer-audit.sh" .
         working-directory: ${{ inputs.theme-dir }}
 
+      # --ignore-scripts: a dependency's install script never runs on the runner (MGR-67). The build needs none: esbuild, Rollup and
+      # Tailwind ship their binaries as optional platform packages, not through a postinstall.
       - name: Install theme npm dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
         working-directory: ${{ inputs.theme-dir }}
 
       # What the theme ships to browsers: its runtime npm dependencies (build tools are devDependencies and never ship). Fails on high or critical.
@@ -185,6 +187,22 @@ jobs:
       # Everything below runs only on a push (or manual run) to main or develop, never on a pull request. main deploys to
       # production, develop to staging (PROD_* / STAGING_* secrets). The prefix is picked by a ternary whose both outcomes are
       # non-empty, so an unset PROD_* secret can never fall through to the staging server.
+      # The tools run with the SSH key below. Composer and npm ran third-party code in this job; if any of it changed the pipeline tools
+      # (the files that ship to the server and run there), stop before the key is loaded.
+      - name: Check the pipeline tools were not modified by the build
+        if: env.DEPLOY == 'true'
+        run: |
+          if [ -n "$(git -C .pkde-deploy status --porcelain --untracked-files=all)" ]; then
+            echo "::error::.pkde-deploy changed during the build; refusing to load the deploy key"
+            git -C .pkde-deploy status --short
+            exit 1
+          fi
+          at="$(git -C .pkde-deploy describe --tags --exact-match 2>/dev/null || true)"
+          if [ "$at" != "$PKDE_DEPLOY_VERSION" ]; then
+            echo "::error::.pkde-deploy is at '${at:-no tag}', expected $PKDE_DEPLOY_VERSION"
+            exit 1
+          fi
+
       - name: Load deploy SSH key
         if: env.DEPLOY == 'true'
         uses: webfactory/ssh-agent@e83874834305fe9a4a2997156cb26c5de65a8555  # v0.10.0

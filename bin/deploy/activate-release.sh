@@ -379,6 +379,58 @@ EOF
     echo "Added the Upload Cache block to $HTACCESS"
 fi
 
+# XML-RPC is off by default in pkde/platform (disable-xmlrpc); the server refuses the file too, so a site that lost the module (or a bot)
+# never reaches PHP. A site that needs XML-RPC (ALLOW_XMLRPC=true) deletes this block from its shared .htaccess and keeps its marker out of it.
+if ! grep -q '# BEGIN XML-RPC Hardening' "$HTACCESS"; then
+    cat >>"$HTACCESS" <<'EOF'
+
+# BEGIN XML-RPC Hardening
+<IfModule mod_authz_core.c>
+<Files "xmlrpc.php">
+Require all denied
+</Files>
+</IfModule>
+# END XML-RPC Hardening
+EOF
+    echo "Added the XML-RPC Hardening block to $HTACCESS"
+fi
+
+# Prove the hardening answers, not just that its marker is in the file (MGR-67: bp, js). A marker proves nothing when the server ignores the
+# file (AllowOverride, a proxy in front, mod_rewrite off). Each probe path does not exist; the deny rules fire before the file system is
+# consulted, so a working rule answers 403 and a missing one 404. A mismatch warns loudly and never fails the deploy (the release is
+# already live); the warning names the path so a person can look. Skipped without WP_HOME or curl.
+probe_hardening() {
+    local url token code path expected failed=0
+    url="$(sed -n 's/^WP_HOME=//p' "$SHARED_DIR/.env" 2>/dev/null | tr -d "\"'\r" | head -1)" || url=""
+    url="${url%/}"
+    if [ -z "$url" ] || ! command -v curl >/dev/null 2>&1; then
+        echo "WARN: hardening probe skipped (needs WP_HOME in $SHARED_DIR/.env and curl): the .htaccess deny rules were NOT verified." >&2
+        return 0
+    fi
+    token="$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
+    for path in "/app/uploads/pkde-probe-$token.php" "/app/themes/pkde-probe/functions.php" "/app/mu-plugins/pkde-probe-$token.php" "/wp/xmlrpc.php"; do
+        expected=403
+        code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$url$path" 2>/dev/null)" || code="000"
+        if [ "$code" != "$expected" ]; then
+            sleep 3
+            code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$url$path" 2>/dev/null)" || code="000"
+        fi
+        if [ "$code" != "$expected" ]; then
+            echo "WARN: hardening probe: $path answered $code, expected $expected. The .htaccess deny rule is NOT enforced." >&2
+            failed=1
+        fi
+    done
+    if [ "$failed" -eq 0 ]; then
+        echo "Hardening probe: uploads PHP, theme PHP, mu-plugins and xmlrpc.php all answer 403"
+    else
+        echo "WARN: ================================================================" >&2
+        echo "WARN: the site hardening in .htaccess is not being enforced by the web server (see above)." >&2
+        echo "WARN: ================================================================" >&2
+    fi
+    return 0
+}
+probe_hardening
+
 # --- prune old releases, keep the newest $KEEP ---
 # Fast: each old release is MOVED into $BASE/.trash (a rename, instant even on NFS) and deleted later in the background by
 # empty_trash, so a slow recursive delete never holds an exec open (one measured rm -rf of a single release was silent for 266 s).
