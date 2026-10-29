@@ -111,6 +111,11 @@ check "wflogs data survives" "grep -q later-attack $BASE/shared/wflogs/attack-da
 check "no 'Seeded' message on a normal deploy" "! grep -q Seeded $T/s3.log"
 check "WordPress block present exactly once" "[ \$(grep -c 'BEGIN WordPress' $BASE/shared/.htaccess) -eq 1 ]"
 check "Hardening block present exactly once" "[ \$(grep -c 'BEGIN Site Hardening' $BASE/shared/.htaccess) -eq 1 ]"
+check "Upload Hardening block present exactly once" "[ \$(grep -c 'BEGIN Upload Hardening' $BASE/shared/.htaccess) -eq 1 ]"
+check "Upload Hardening denies PHP in uploads and in themes" "grep -qF 'RewriteRule ^app/uploads/.*' $BASE/shared/.htaccess && grep -qF 'RewriteRule ^app/themes/[^/]+/.*' $BASE/shared/.htaccess"
+check "Upload Hardening sandboxes SVG" "grep -q 'X-Content-Type-Options' $BASE/shared/.htaccess && grep -q 'sandbox' $BASE/shared/.htaccess"
+check "Upload Cache block present exactly once" "[ \$(grep -c 'BEGIN Upload Cache' $BASE/shared/.htaccess) -eq 1 ]"
+check "Upload Cache: 30 days for uploads, one year immutable for ?ver= assets" "grep -q 'public, max-age=2592000\" env=PKDE_UPLOAD_ASSET' $BASE/shared/.htaccess && grep -q 'immutable\" env=PKDE_VER_ASSET' $BASE/shared/.htaccess"
 
 echo "=== Scenario 4: ROLLBACK to R1 (an older, pre-change release with real dirs) ==="
 bash $S $BASE R1 5 >$T/s4.log 2>&1; rc=$?

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026.10.29
+
+- **Two new `.htaccess` blocks, added to every site on its next deploy (a separate marker each, so they arrive whatever the Site Hardening block holds):**
+  - `# BEGIN Upload Hardening` (MGR-67: rp, bp audits): `app/uploads/*.php` (also `.phtml`, `.phar`) and any `.php` under `app/themes/*/` answer 403 (theme PHP is only ever included by WordPress, never requested; an uploaded or planted PHP file in the media library is not executed), and every `.svg` is served with `X-Content-Type-Options: nosniff` and a sandboxing `Content-Security-Policy` (`default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox`), so an SVG opened on its own cannot run script even if one slipped past the sanitiser; as an `<img>` it renders as before.
+  - `# BEGIN Upload Cache` (tcs GTmetrix, MGR-68): browser caching for `app/uploads` media (30 days) and for theme/plugin assets requested with `?ver=` (one year, immutable); HTML and PHP untouched; appended last so it overrides W3TC's Browser Cache rules.
+  Both are wrapped in `<IfModule>` (no module = no protection, never a 500). `activate-release.test.sh` checks each block once and its rules (107 pass on Linux). **Adopt:** bump the package and the workflow tag; after the deploy `curl -I` an upload and a `?ver=` asset on staging for `Cache-Control`, and check that an upload `.php` and `functions.php` under the theme give 403. If a site serves a theme PHP file on purpose, tell the template agent.
+
 ## 2026.10.28.1
 
 - **Security hardening of the reusable workflows (MGR-67: cs, rp, bb audits):**

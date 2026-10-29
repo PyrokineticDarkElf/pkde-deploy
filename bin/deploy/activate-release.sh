@@ -307,6 +307,32 @@ EOF
     echo "Added the Site Hardening block to $HTACCESS"
 fi
 
+# PHP that must never be requested directly, and SVG that must never run script when opened on its own (MGR-67: rp, bp audits). A
+# separate block with its own marker, so every site gets it on its next deploy whatever its Site Hardening block already holds.
+#  - app/uploads/*.php (and .phtml, .phar): nothing in the media library is code; an uploaded or planted PHP file there is not run.
+#  - app/themes/*/**.php: theme PHP (functions.php, block render.php, ...) is only ever included by WordPress, never requested.
+#  - SVG files: X-Content-Type-Options nosniff and a sandboxing CSP, so an SVG opened directly (not as an <img>) cannot run script even
+#    if one slipped past the sanitiser. Each part is wrapped in <IfModule>: no module = no protection, never a 500.
+if ! grep -q '# BEGIN Upload Hardening' "$HTACCESS"; then
+    cat >>"$HTACCESS" <<'EOF'
+
+# BEGIN Upload Hardening
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteRule ^app/uploads/.*\.(?:php[0-9]?|phtml|phar)$ - [F,L]
+RewriteRule ^app/themes/[^/]+/.*\.php$ - [F,L]
+</IfModule>
+<IfModule mod_headers.c>
+<FilesMatch "\.svgz?$">
+Header set X-Content-Type-Options "nosniff"
+Header set Content-Security-Policy "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox"
+</FilesMatch>
+</IfModule>
+# END Upload Hardening
+EOF
+    echo "Added the Upload Hardening block to $HTACCESS"
+fi
+
 # Long-lived caching for the content-hashed Vite output: public/build/assets/ and the self-hosted fonts under
 # public/build/__laravel_vite_plugin__/fonts/ carry a content hash in their names, so a one-year immutable
 # Cache-Control is safe (a changed file gets a new name). manifest.json and fonts-manifest.json are NOT hashed and
@@ -328,6 +354,29 @@ Header set Cache-Control "public, max-age=31536000, immutable" env=PKDE_HASHED_A
 # END Asset Cache
 EOF
     echo "Added the Asset Cache block to $HTACCESS"
+fi
+
+# Browser caching for what the Asset Cache block above does not cover (tcs GTmetrix, MGR-68): media in app/uploads (30 days; a replaced
+# image gets a new file name, and Cloudflare/W3TC revalidate HTML separately) and any theme or plugin asset requested with a ?ver= query
+# (the version changes with the file: one year, immutable). HTML and PHP are untouched. Same env-variable technique as above;
+# appended last so it overrides W3TC's Browser Cache rules; re-added when W3TC drops it. Each part is wrapped in <IfModule>.
+if ! grep -q '# BEGIN Upload Cache' "$HTACCESS"; then
+    cat >>"$HTACCESS" <<'EOF'
+
+# BEGIN Upload Cache
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteRule ^app/uploads/.*\.(?:avif|gif|ico|jpe?g|mp4|pdf|png|svgz?|webm|webp|woff2?)$ - [E=PKDE_UPLOAD_ASSET:1]
+RewriteCond %{QUERY_STRING} (?:^|&)ver=
+RewriteRule ^app/(?:themes|plugins|mu-plugins)/.+\.(?:avif|css|gif|ico|jpe?g|js|png|svgz?|webp|woff2?)$ - [E=PKDE_VER_ASSET:1]
+</IfModule>
+<IfModule mod_headers.c>
+Header set Cache-Control "public, max-age=2592000" env=PKDE_UPLOAD_ASSET
+Header set Cache-Control "public, max-age=31536000, immutable" env=PKDE_VER_ASSET
+</IfModule>
+# END Upload Cache
+EOF
+    echo "Added the Upload Cache block to $HTACCESS"
 fi
 
 # --- prune old releases, keep the newest $KEEP ---
