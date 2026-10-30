@@ -68,7 +68,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
           const hb = header.getBoundingClientRect();
           const c = content(el);
           const b = el.getBoundingClientRect();
-          return header && ((near(c.left, h.left) && near(c.right, h.right)) || (near(b.left, hb.left) && near(b.right, hb.right)));
+          return header && ((near(c.left, h.left) && near(c.right, h.right)) || (near(b.left, h.left) && near(b.right, h.right)) || (near(b.left, hb.left) && near(b.right, hb.right)));
         };
         // A full-bleed block (hero, loop panel) positions its own inner content; the Section rule below covers Sections.
         const fullBleed = (el) => { const r = el.getBoundingClientRect(); return r.left <= 1 && r.right >= innerWidth - 1 && !el.matches('.wp-block-sage-section'); };
@@ -105,6 +105,20 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
             if (visible(child)) items.push({ label: 'section child ' + label(child), ...box(child) });
           }
         });
+        // The painted box (a border, a background, a card) of a block in the page content grid must sit on the header's content edges when it
+        // spans the page measure: text that lines up under a box that sticks out 24px each side still looks misaligned (bp, MGR-62). A narrower
+        // callout inside the prose column is by design and not checked.
+        if (header) {
+          const h = content(header);
+          document.querySelectorAll('.content-grid > *').forEach((child) => {
+            if (! visible(child) || child.matches('.alignfull, .pkde-loop-panel, .alignleft, .alignright')) return;
+            const cs = getComputedStyle(child);
+            const painted = (cs.backgroundColor !== 'rgba(0, 0, 0, 0)' && cs.backgroundColor !== 'transparent') || cs.backgroundImage !== 'none'
+              || ['Left', 'Right', 'Top', 'Bottom'].some((side) => parseFloat(cs[`border${side}Width`]) > 0 && cs[`border${side}Style`] !== 'none');
+            const r = child.getBoundingClientRect();
+            if (painted && Math.abs(r.width - (h.right - h.left)) < 80) items.push({ label: 'painted ' + label(child), left: r.left, right: r.right });
+          });
+        }
         return { ref: header ? content(header) : null, items };
       });
       await page.close();
