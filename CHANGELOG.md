@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026.10.30.1
+
+- The theme's folder READMEs (`resources/views/README.md`, `resources/views/vendor/pkde-kit/README.md`, `app/README.md`: where a site's view overrides and own PHP go) are developer notes and never ship: `assemble-artifact.sh` excludes them and `check-artifact.sh` fails the build if one is in the artifact (the blocks README was already handled this way). A test covers it. **Adopt:** bump the package and the workflow tag together with the template's folders (reports/releases.md).
+
 ## 2026.10.30
 
 - **`fingerprint.sh edges` checks the painted box (bp, MGR-62 follow-up).** A block in the page content grid with a border or background that spans the page measure must sit on the header's content edges, not only its text: text can line up under a box that sticks out 24px each side. Narrower callouts inside the prose column are by design and not checked. A container or block whose box (not only its content) is on the header's content edges now counts as matching, which is how the kit 2026.10.30 grid lays out. A recreated bp case (a bordered `alignwide` strip) is flagged on kit 2026.10.29 (80..1360 against 104..1336 at 1440, 0..390 against 24..366 at 390) and passes on kit 2026.10.30. **Adopt:** bump the package and the workflow tag.

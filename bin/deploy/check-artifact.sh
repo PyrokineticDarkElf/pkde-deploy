@@ -50,6 +50,9 @@ forbidden=(
     web/app/themes/sage/vendor/pkde/sage-kit/composer.json
     web/app/themes/sage/vendor/pkde/sage-kit/.github
     web/app/themes/sage/resources/blocks/README.md
+    web/app/themes/sage/resources/views/README.md
+    web/app/themes/sage/resources/views/vendor/pkde-kit/README.md
+    web/app/themes/sage/app/README.md
     # Dev Composer packages: proves the --no-dev reinstall ran after lint/test.
     vendor/bin/pest
     vendor/bin/pint

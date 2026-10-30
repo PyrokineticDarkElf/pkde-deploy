@@ -28,6 +28,11 @@ echo 'Require all denied' > "$site/web/app/plugins/wordfence/lib/.htaccess"
 echo 'Require all denied' > "$site/web/app/plugins/w3-total-cache/pub/.htaccess"
 echo 'Require all denied' > "$site/web/app/plugins/w3-total-cache/ini/.htaccess"
 echo 'ROOT RULES' > "$site/web/.htaccess"
+# The theme's folder READMEs are for developers: they must not ship (MGR-67 docs folders).
+mkdir -p "$site/web/app/themes/sage/resources/views/vendor/pkde-kit" "$site/web/app/themes/sage/app"
+echo '# readme' > "$site/web/app/themes/sage/resources/views/README.md"
+echo '# readme' > "$site/web/app/themes/sage/resources/views/vendor/pkde-kit/README.md"
+echo '# readme' > "$site/web/app/themes/sage/app/README.md"
 
 (cd "$site" && bash "$REPO_ROOT/bin/deploy/assemble-artifact.sh" dist >/dev/null 2>&1)
 check "wordfence lib/.htaccess is in the artifact" "$([ -f "$site/dist/web/app/plugins/wordfence/lib/.htaccess" ] && echo yes || echo no)" yes
@@ -35,6 +40,7 @@ check "w3tc pub/.htaccess is in the artifact" "$([ -f "$site/dist/web/app/plugin
 check "w3tc ini/.htaccess is in the artifact" "$([ -f "$site/dist/web/app/plugins/w3-total-cache/ini/.htaccess" ] && echo yes || echo no)" yes
 check "the docroot's own .htaccess is not in the artifact" "$([ -e "$site/dist/web/.htaccess" ] && echo yes || echo no)" no
 check ".htaccess.dist is in the artifact" "$([ -f "$site/dist/web/.htaccess.dist" ] && echo yes || echo no)" yes
+check "the theme folder READMEs are not in the artifact" "$(ls "$site/dist/web/app/themes/sage/resources/views/README.md" "$site/dist/web/app/themes/sage/resources/views/vendor/pkde-kit/README.md" "$site/dist/web/app/themes/sage/app/README.md" 2>/dev/null | wc -l | tr -d ' ')" 0
 
 (cd "$site" && bash "$REPO_ROOT/bin/deploy/check-artifact.sh" dist >/dev/null 2>&1); check "check-artifact passes on a complete artifact" "$?" 0
 

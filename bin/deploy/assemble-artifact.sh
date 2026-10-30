@@ -54,7 +54,10 @@ rsync -a web/ "$DEST/web/" \
     --exclude '/app/mu-plugins/pkde-platform/tests' \
     --exclude '/app/mu-plugins/pkde-platform/docs' \
     --exclude '/app/mu-plugins/pkde-platform/README.md' \
-    --exclude '/app/themes/sage/resources/blocks/README.md'
+    --exclude '/app/themes/sage/resources/blocks/README.md' \
+    --exclude '/app/themes/sage/resources/views/README.md' \
+    --exclude '/app/themes/sage/resources/views/vendor/pkde-kit/README.md' \
+    --exclude '/app/themes/sage/app/README.md'
 
 # WordPress core's readme.html and license.txt are publicly served and reveal the exact version.
 rm -f "$DEST/web/wp/readme.html" "$DEST/web/wp/license.txt"
