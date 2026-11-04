@@ -1,0 +1,2 @@
+# A fake key block (the word CANARY inside it) in an earlier commit of the push-gh-secrets test, since rewritten to build the marker at run time: not a credential.
+c1e3ca3c446dee30eeb9cdf2561f8e512f44774e:tests/deploy/push-gh-secrets.test.sh:private-key:55
