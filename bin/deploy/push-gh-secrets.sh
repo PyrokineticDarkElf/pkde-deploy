@@ -8,7 +8,9 @@
 # The 1Password item has a field named exactly like each secret:
 #   <PREFIX>_DEPLOY_PATH, <PREFIX>_SSH_HOST, <PREFIX>_SSH_PORT, <PREFIX>_SSH_USER      the value itself
 #   <PREFIX>_SSH_KEY                                                                   a REFERENCE to a 1Password SSH key item's private key,
-#                                                                                       e.g. op://Vault/deploy key/private key
+#                                                                                       e.g. op://Vault/deploy key/private key. OMIT the field when the
+#                                                                                       item IS the SSH Key item: its own private key is used, so ONE item
+#                                                                                       can hold the key and the host details
 #   <PREFIX>_SSH_KNOWN_HOSTS                                                           optional (the output of `ssh-keyscan -p PORT HOST`)
 # with PREFIX STAGING and/or PROD (--env, default staging). The key is read in OpenSSH format (`?ssh-format=openssh`). A required field that is
 # missing or empty stops the run BEFORE anything is set. --dry-run lists the secret names it would set (and checks the fields are filled) and sets
@@ -49,6 +51,17 @@ OPTIONAL=(SSH_KNOWN_HOSTS)
 
 # The 1Password reference of a field: op://vault/item/FIELD.
 ref() { printf '%s/%s' "$ITEM" "$1"; }
+# Where the private key comes from: the reference held in <PREFIX>_SSH_KEY when that field is filled, else the item's OWN `private key` (the item is an
+# SSH Key item with the other fields added to it). A reference is not secret; it is the only thing ever held in a variable.
+key_ref() {
+    local held
+    if [ "$(filled "$1")" = 1 ]; then
+        held="$(op read "$(ref "$1")" 2>/dev/null)" || return 1
+        printf '%s' "$held"
+    else
+        printf '%s' "$(ref 'private key')"
+    fi
+}
 # 1 when the field exists and is not empty; prints a count, never the value.
 filled() { op read "$(ref "$1")" 2>/dev/null | head -c 1 | wc -c | tr -d ' '; }
 
@@ -57,12 +70,14 @@ TO_SET=(); SKIPPED=()
 for prefix in "${PREFIXES[@]}"; do
     for name in "${REQUIRED[@]}"; do
         field="${prefix}_${name}"
-        [ "$(filled "$field")" = 1 ] || die "the 1Password field $field is missing or empty in $ITEM; nothing was set"
         if [ "$name" = SSH_KEY ]; then
-            # The field holds a reference to an SSH key item, not the key: a reference is not secret, and a key pasted into a text field is refused.
-            keyref="$(op read "$(ref "$field")" 2>/dev/null)" || die "could not read the $field field; nothing was set"
+            keyref="$(key_ref "$field")" || die "could not read the $field field; nothing was set"
+            # A field must hold a reference to an SSH key item's private key (a key pasted into a text field is refused); with no field the item's own
+            # private key is used, so one SSH Key item can hold the key AND the host details.
             [[ "$keyref" =~ ^op://[^/]+/[^/]+/[^/]+$ ]] || die "$field must hold a reference to an SSH key item's private key (op://vault/item/private key), not the key itself; nothing was set"
-            [ "$(op read "${keyref}?ssh-format=openssh" 2>/dev/null | head -c 1 | wc -c | tr -d ' ')" = 1 ] || die "$field points at $keyref, which could not be read as an OpenSSH private key; nothing was set"
+            [ "$(op read "${keyref}?ssh-format=openssh" 2>/dev/null | head -c 1 | wc -c | tr -d ' ')" = 1 ] || die "$field: $keyref could not be read as an OpenSSH private key (is the item an SSH Key item?); nothing was set"
+        else
+            [ "$(filled "$field")" = 1 ] || die "the 1Password field $field is missing or empty in $ITEM; nothing was set"
         fi
         TO_SET+=("$field")
     done
@@ -84,7 +99,7 @@ fi
 for field in "${TO_SET[@]}"; do
     case "$field" in
         *_SSH_KEY)
-            keyref="$(op read "$(ref "$field")" 2>/dev/null)"
+            keyref="$(key_ref "$field")"
             op read "${keyref}?ssh-format=openssh" 2>/dev/null | gh secret set "$field" -R "$REPO" >/dev/null 2>&1 || die "setting $field failed (not printed: the value never leaves the pipe)"
             keyref=""
             ;;

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026.11.04.2
+
+- **`push-gh-secrets.sh`: one SSH Key item can hold the key AND the host details (owner).** Add the `STAGING_DEPLOY_PATH`, `STAGING_SSH_HOST`, `STAGING_SSH_PORT`, `STAGING_SSH_USER` (and optional `STAGING_SSH_KNOWN_HOSTS`) fields to the 1Password SSH Key item itself and leave `STAGING_SSH_KEY` out: the item's own private key is used (read in OpenSSH format). With a `<PREFIX>_SSH_KEY` field the old layout still works (a reference to another item's key; use it when staging and production have different keys in one site item). A pasted key in that field is still refused. Tests: 36 checks (own-key case and its refusal when the item has no private key). **Adopt:** use 2026.11.04.2; the launch guide's item table gets the one-item layout.
+
 ## 2026.11.04.1
 
 - **`push-gh-secrets.sh`: the sign-in check works with the 1Password desktop-app integration.** The 2026.11.04 script asked `op whoami`, which fails ("account is not signed in") with the app integration even though `op read` works, so it refused to start. It now checks with `op vault list` (what `op read` needs), and the test's fake `op whoami` fails on purpose so the script cannot depend on it again. Found by running the dry run against a real 1Password item (a dummy one) that day. **Adopt:** use 2026.11.04.1 for the script.

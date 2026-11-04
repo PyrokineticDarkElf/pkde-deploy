@@ -99,6 +99,18 @@ out="$(bash "$S" "$ITEM" owner/repo 2>&1)"; rc=$?
 check "a pasted key: refused, nothing set" "$([ "$rc" -ne 0 ] && [ ! -d "$T/set" ] && echo yes || echo no)" yes
 check "...and never echoed" "$(printf '%s' "$out" | grep -c CANARY)" 0
 
+# 5b. One SSH Key item that holds the key AND the host details: with no STAGING_SSH_KEY field the item's own private key is used.
+reset; fill_staging; rm "$T/vals/$(printf '%s' "$ITEM/STAGING_SSH_KEY" | tr '/ :?' '____')"
+own="$T/vals/$(printf '%s' "$ITEM/private key" | tr '/ :?' '____')"
+printf '%s' "ignored" > "$own"; printf '%s' "${PK_OPEN}CANARY-OWN-KEY${PK_CLOSE}" > "$own.openssh"
+out="$(bash "$S" "$ITEM" owner/repo 2>&1)"; rc=$?
+check "an SSH Key item with no key field: exit 0, five secrets set" "$([ "$rc" -eq 0 ] && ls "$T/set" | wc -l | tr -d ' ')" 5
+check "...the key is the item's own private key" "$(grep -c 'CANARY-OWN-KEY' "$T/set/STAGING_SSH_KEY")" 1
+check "...and nothing was printed" "$(printf '%s' "$out" | grep -c CANARY)" 0
+reset; fill_staging; rm "$T/vals/$(printf '%s' "$ITEM/STAGING_SSH_KEY" | tr '/ :?' '____')"
+out="$(bash "$S" "$ITEM" owner/repo 2>&1)"; rc=$?
+check "no key field and no private key on the item: refused, nothing set" "$([ "$rc" -ne 0 ] && [ ! -d "$T/set" ] && echo yes || echo no)" yes
+
 # 6. Dry run: names only, nothing set, no values.
 reset; fill_staging
 out="$(bash "$S" "$ITEM" owner/repo --dry-run 2>&1)"; rc=$?
@@ -127,7 +139,7 @@ check "no arguments: usage, exit 2" "$(bash "$S" >/dev/null 2>&1; echo $?)" 2
 
 # 9. The script itself never traces, prints a value, or holds one in a variable.
 check "no set -x" "$(grep -c '^set -x\|set -o xtrace' "$S")" 0
-check "the only command substitutions of op read hold the key REFERENCE (the check and the set), never a value" "$(grep -c 'keyref="\$(op read' "$S")" "$(grep -c '=\$(op read\|="\$(op read' "$S")"
+check "the only command substitution of op read holds the key REFERENCE (never a value)" "$(grep -c 'held="\$(op read' "$S")" "$(grep -c '=\$(op read\|="\$(op read' "$S")"
 
 echo "push-gh-secrets: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
