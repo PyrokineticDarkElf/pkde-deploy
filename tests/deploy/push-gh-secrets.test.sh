@@ -20,7 +20,8 @@ cat > "$T/bin/op" <<'SH'
 #!/usr/bin/env bash
 echo "op $*" >> "$FAKE_DIR/op.log"
 case "$1" in
-  whoami) [ -e "$FAKE_DIR/signed-out" ] && exit 1; echo "fake-user"; exit 0 ;;
+  whoami) exit 1 ;; # the real one fails with the desktop-app integration: the script must not rely on it
+  vault) [ -e "$FAKE_DIR/signed-out" ] && exit 1; echo "fake-vault"; exit 0 ;;
   read)
     ref="${2%%\?*}"; file="$FAKE_DIR/vals/$(printf '%s' "$ref" | tr '/ :?' '____')"
     [ -f "$file" ] || exit 1

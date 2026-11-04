@@ -41,7 +41,8 @@ case "$ENVS" in staging) PREFIXES=(STAGING) ;; prod) PREFIXES=(PROD) ;; both) PR
 command -v op >/dev/null 2>&1 || die "the 1Password CLI (op) is not installed"
 command -v gh >/dev/null 2>&1 || die "the GitHub CLI (gh) is not installed"
 [ -n "${GH_TOKEN:-}" ] || die "GH_TOKEN is not set: run it as GH_TOKEN=\$(gh auth token --user ACCOUNT) bash push-gh-secrets.sh ... so the account is explicit"
-op whoami >/dev/null 2>&1 || die "op is not signed in (open 1Password and sign in, then retry)"
+# `op whoami` fails with the desktop-app integration even when op works; listing the vaults is the check that matches what `op read` needs.
+op vault list >/dev/null 2>&1 || die "op is not signed in or the 1Password app is locked (unlock it, then retry)"
 
 REQUIRED=(DEPLOY_PATH SSH_HOST SSH_KEY SSH_PORT SSH_USER)
 OPTIONAL=(SSH_KNOWN_HOSTS)
