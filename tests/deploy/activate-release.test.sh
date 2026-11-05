@@ -360,4 +360,20 @@ check "...and the background delete finishes by itself" "[ -z \"\$(ls -A $BASE/.
 check "'all' prints one duration line for the whole run" "grep -q \"Exec 'all' finished after [0-9]*s\" $T/s14g.log"
 BASE=$OLD_BASE
 
+# 15. W3TC without WP_CACHE=true in the env file: a warning (never a failure); with it, none; without the plugin, none.
+OLD_BASE=$BASE
+mkrelease WC1; mkdir -p $BASE/releases/WC1/web/app/plugins/w3-total-cache
+echo "WP_ENV=production" > $BASE/shared/.env
+bash $S $BASE WC1 5 >$T/s15a.log 2>&1; rc=$?
+check "W3TC without WP_CACHE: exit 0 and a warning naming WP_CACHE=true" "[ $rc -eq 0 ] && grep -q 'WARN: this site uses W3 Total Cache.*WP_CACHE=true' $T/s15a.log"
+mkrelease WC2; mkdir -p $BASE/releases/WC2/web/app/plugins/w3-total-cache
+printf 'WP_ENV=production\nWP_CACHE=true\n' > $BASE/shared/.env
+bash $S $BASE WC2 5 >$T/s15b.log 2>&1
+check "W3TC with WP_CACHE=true: no warning" "! grep -q 'uses W3 Total Cache' $T/s15b.log"
+mkrelease WC3
+printf 'WP_ENV=production\n' > $BASE/shared/.env
+bash $S $BASE WC3 5 >$T/s15c.log 2>&1
+check "no W3TC plugin: no warning" "! grep -q 'uses W3 Total Cache' $T/s15c.log"
+BASE=$OLD_BASE
+
 echo; echo "RESULT: $pass passed, $fail failed"; exit $fail

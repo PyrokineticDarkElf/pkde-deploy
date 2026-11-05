@@ -146,6 +146,29 @@ function pkde_drift_evaluate(array $f): array
         }
     }
 
+    // W3TC's working parts beyond its options (bb and tcs staging, 2026-11-05): the page cache only serves with WP_CACHE true, the cleanup and
+    // preload events must be scheduled (applying the standard by script does not schedule them; w3tc-settings.php does), and the newest cached page
+    // must be younger than the lifetime, or the preloader and the garbage collection are not running (WP-Cron needs visits, or a server-side cron).
+    // Only when the facts carry them, and only while the page cache is switched on.
+    if (is_array($w3) && ! empty($w3['settings']['pgcache.enabled']) && array_key_exists('page_cache', $f)) {
+        $pc = (array) $f['page_cache'];
+        $cmp('WP_CACHE is true (the page cache serves)', ! empty($pc['wp_cache']), 'WP_CACHE is not true: WordPress never loads the page-cache drop-in (add WP_CACHE=true to the shared .env)', true);
+        foreach (['w3_pgcache_prime' => 'preload', 'w3_pgcache_cleanup' => 'cleanup'] as $event => $label) {
+            if ($event === 'w3_pgcache_prime' && empty($w3['settings']['pgcache.prime.enabled'])) {
+                continue;
+            }
+            $cmp("W3TC $label cron event is scheduled", ! empty($pc['cron'][$event]), "$event is not scheduled (run bin/deploy/w3tc-settings.php, which schedules it)", true);
+        }
+        $lifetime = (int) ($w3['settings']['pgcache.lifetime'] ?? 86400);
+        $age = $pc['newest_age'] ?? null;
+        $cmp(
+            'W3TC newest cached page is younger than the lifetime',
+            $age !== null && (int) $age <= $lifetime + 3600,
+            $age === null ? 'no cached page found: the cache is empty or not being filled (preloader/cron not running?)' : sprintf('the newest cached page is %d hours old against a %d hour lifetime: the preloader and garbage collection are not running (is a server-side cron set?)', intdiv((int) $age, 3600), intdiv($lifetime, 3600)),
+            true,
+        );
+    }
+
     // Rank Math must be registered (the setup wizard skipped, or an account connected). Unregistered, Rank Math silently disables its
     // modules: the sitemap, titles and schema stop. A fresh or scrubbed database loses the flag; bin/setup sets it.
     if (in_array('seo-by-rank-math', (array) ($f['active_plugins'] ?? []), true)) {
@@ -278,6 +301,29 @@ function pkde_drift_collect(): array
         }
     }
 
+    $pageCache = null;
+    if ($w3 !== null) {
+        $dir = defined('W3TC_CACHE_PAGE_ENHANCED_DIR') ? W3TC_CACHE_PAGE_ENHANCED_DIR : WP_CONTENT_DIR . '/cache/page_enhanced';
+        $newest = 0;
+        $seen = 0;
+        if (is_dir($dir)) {
+            // The newest cached page (never more than 5000 files looked at: this is a check, not a crawl). Names: _index*.html, _index*.html_gzip.
+            foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS)) as $file) {
+                if ($file->isFile() && str_starts_with($file->getFilename(), '_index')) {
+                    $newest = max($newest, $file->getMTime());
+                }
+                if (++$seen >= 5000) {
+                    break;
+                }
+            }
+        }
+        $pageCache = [
+            'wp_cache' => defined('WP_CACHE') && WP_CACHE,
+            'cron' => ['w3_pgcache_prime' => (bool) wp_next_scheduled('w3_pgcache_prime'), 'w3_pgcache_cleanup' => (bool) wp_next_scheduled('w3_pgcache_cleanup')],
+            'newest_age' => $newest ? time() - $newest : null,
+        ];
+    }
+
     $active = array_map(fn($p) => dirname($p) === '.' ? basename($p, '.php') : dirname($p), (array) get_option('active_plugins', []));
 
     return [
@@ -290,6 +336,7 @@ function pkde_drift_collect(): array
         'blogdescription' => (string) get_option('blogdescription'),
         'wordfence' => $wf,
         'w3tc' => $w3,
+        'page_cache' => $pageCache,
         'rankmath' => [
             'skip' => (bool) get_option('rank_math_registration_skip'),
             'connected' => ! empty(((array) get_option('rank_math_connect_data'))['api_key'] ?? ''),

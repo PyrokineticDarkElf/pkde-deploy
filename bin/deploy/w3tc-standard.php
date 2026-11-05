@@ -42,3 +42,27 @@ function pkde_w3tc_woocommerce_cookies(): array
 {
     return ['woocommerce_items_in_cart', 'wp_woocommerce_session_'];
 }
+
+/**
+ * The WP-Cron events W3TC needs for the standard to work: the hourly page-cache cleanup and the sitemap preloader. W3TC registers them itself ONLY
+ * when its settings are saved in wp-admin (PgCache_Environment::fix_on_event); applying the standard by script writes the options and leaves the events
+ * unscheduled (bb and tcs staging: cached pages 48 hours old against a 24 hour lifetime, a preloader that never ran). w3tc-settings.php schedules the
+ * missing ones, the drift check reports them.
+ *
+ * @param  array<string,bool|int|string>  $standard  pkde_w3tc_standard()
+ * @return list<string> the event (and schedule) names
+ */
+function pkde_w3tc_cron_events(array $standard): array
+{
+    $events = [];
+
+    if (! empty($standard['pgcache.enabled']) && in_array($standard['pgcache.engine'] ?? '', ['file', 'file_generic'], true)) {
+        $events[] = 'w3_pgcache_cleanup';
+    }
+
+    if (! empty($standard['pgcache.enabled']) && ! empty($standard['pgcache.prime.enabled'])) {
+        $events[] = 'w3_pgcache_prime';
+    }
+
+    return $events;
+}

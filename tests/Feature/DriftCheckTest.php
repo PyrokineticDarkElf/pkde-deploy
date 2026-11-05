@@ -304,3 +304,47 @@ it('fails a .env split between environments: WP_ENV, DISALLOW_INDEXING and STAGI
 it('does not evaluate the environment rows when the facts carry no WP_ENV', function () {
     expect(pkdeStatuses(pkdeGoodFacts()))->not->toHaveKey('WP_ENV and WP_ENVIRONMENT_TYPE agree');
 });
+
+function pkdeCacheFacts(array $overrides = []): array
+{
+    return array_merge(pkdeGoodFacts(), ['page_cache' => array_merge(['wp_cache' => true, 'cron' => ['w3_pgcache_prime' => true, 'w3_pgcache_cleanup' => true], 'newest_age' => 1800], $overrides)]);
+}
+
+it('passes a page cache that serves, is scheduled and is fresh', function () {
+    $statuses = pkdeStatuses(pkdeCacheFacts());
+
+    expect(array_keys($statuses, 'FAIL'))->toBe([])
+        ->and($statuses['WP_CACHE is true (the page cache serves)'])->toBe('PASS')
+        ->and($statuses['W3TC preload cron event is scheduled'])->toBe('PASS')
+        ->and($statuses['W3TC cleanup cron event is scheduled'])->toBe('PASS')
+        ->and($statuses['W3TC newest cached page is younger than the lifetime'])->toBe('PASS');
+});
+
+it('fails the W3TC rows bb and tcs staging showed: no WP_CACHE, no cron events, a stale cache (2026-11-05)', function () {
+    $noCache = pkdeStatuses(pkdeCacheFacts(['wp_cache' => false]));
+    expect($noCache['WP_CACHE is true (the page cache serves)'])->toBe('FAIL');
+
+    $noCron = pkdeStatuses(pkdeCacheFacts(['cron' => ['w3_pgcache_prime' => false, 'w3_pgcache_cleanup' => false]]));
+    expect($noCron['W3TC preload cron event is scheduled'])->toBe('FAIL')
+        ->and($noCron['W3TC cleanup cron event is scheduled'])->toBe('FAIL');
+
+    $stale = pkdeStatuses(pkdeCacheFacts(['newest_age' => 48 * 3600]));
+    expect($stale['W3TC newest cached page is younger than the lifetime'])->toBe('FAIL');
+
+    $empty = pkdeStatuses(pkdeCacheFacts(['newest_age' => null]));
+    expect($empty['W3TC newest cached page is younger than the lifetime'])->toBe('FAIL');
+});
+
+it('skips the preload row when the preloader is off, and every page-cache row when the facts carry none', function () {
+    $facts = pkdeCacheFacts(['cron' => ['w3_pgcache_prime' => false, 'w3_pgcache_cleanup' => true]]);
+    $facts['w3tc']['settings']['pgcache.prime.enabled'] = false;
+
+    expect(pkdeStatuses($facts))->not->toHaveKey('W3TC preload cron event is scheduled')
+        ->and(pkdeStatuses(pkdeGoodFacts()))->not->toHaveKey('WP_CACHE is true (the page cache serves)');
+});
+
+it('names the cron events the W3TC standard needs', function () {
+    expect(pkde_w3tc_cron_events(pkde_w3tc_standard('https://example.test/sitemap_index.xml')))->toBe(['w3_pgcache_cleanup', 'w3_pgcache_prime'])
+        ->and(pkde_w3tc_cron_events(['pgcache.enabled' => true, 'pgcache.engine' => 'file_generic', 'pgcache.prime.enabled' => false]))->toBe(['w3_pgcache_cleanup'])
+        ->and(pkde_w3tc_cron_events(['pgcache.enabled' => false, 'pgcache.engine' => 'file_generic', 'pgcache.prime.enabled' => true]))->toBe([]);
+});

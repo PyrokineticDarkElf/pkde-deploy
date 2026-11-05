@@ -89,6 +89,12 @@ if [ ! -f "$SHARED_DIR/.env" ]; then
     exit 1
 fi
 
+# A site with W3 Total Cache needs WP_CACHE=true in the env file, or WordPress never loads the page-cache drop-in and every page is built fresh (bb staging,
+# 2026-11-05: the cache looked configured and served nothing). A warning, never a failure: the release is fine without it.
+if [ -d "$RELEASE_DIR/web/app/plugins/w3-total-cache" ] && ! grep -qE "^WP_CACHE=[\"']?(true|1)" "$SHARED_DIR/.env"; then
+    echo "WARN: this site uses W3 Total Cache but $SHARED_DIR/.env has no WP_CACHE=true: the page cache will NOT serve (add the line; see the launch guide, W3TC)." >&2
+fi
+
 # The release that is live right now (empty on the very first deploy, or when
 # re-activating the release that is already current).
 PREV_DIR=""
