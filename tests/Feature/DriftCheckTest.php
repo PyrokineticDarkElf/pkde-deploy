@@ -393,3 +393,15 @@ it('finds the theme views that read the basket, a notice, a cookie or the user, 
     rmdir("$dir/sections");
     rmdir($dir);
 });
+
+it('never raises the basket-visitor rows on a site without WooCommerce, even if the option is set (rp, bp, mds, jsd are not shops)', function () {
+    $facts = pkdeGoodFacts();
+    $facts['woocommerce_active'] = false;
+    $facts['cache_basket_visitors'] = true;
+    $facts['kit_cache_safe'] = false;
+    $facts['personal_views'] = ['sections/header.blade.php'];
+
+    $names = array_keys(pkdeStatuses($facts));
+
+    expect(array_filter($names, fn($n) => str_contains($n, 'basket') || str_contains($n, 'Cache-safe theme') || str_contains($n, 'WooCommerce cookies')))->toBe([]);
+});
