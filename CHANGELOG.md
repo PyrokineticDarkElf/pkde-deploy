@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026.11.06.1
+
+Breadcrumb standard (MGR-77 parity; needs sage-kit 2026.11.06.3, which owns the trail). **Adopt:** bump the package and the workflow tags; read the drift check.
+
+- **Two drift rows.** "Breadcrumbs: the kit sets the standard (separator "/", label "Home")": the separator and home label Rank Math would actually get, with the kit's filters applied (FAIL when the kit is older than 2026.11.06.3, or a filter or a copy overrides it); and "Breadcrumbs: Rank Math's breadcrumb module is on (its BreadcrumbList schema)" (only while Rank Math is active; the kit declares theme support, so it is on unless the site turns that off). Facts: `pkde_drift_breadcrumb_facts()`, read only.
+- Test: the basket-visitor rows are never raised on a site without WooCommerce, even with the option set (rp, bp, mds, jsd are not shops).
+
 ## 2026.11.06
 
 Opt-in for caching visitors with a basket (owner go, MGR-76; needs sage-kit 2026.11.06, whose pages carry nothing personal). **Adopt:** bump the package and the workflow tag. Nothing changes until a site opts in: `wp option update pkde_cache_basket_visitors 1`, then re-run `bin/deploy/w3tc-settings.php` (the audit and the steps are in the kit's `docs/page-cache.md`).

@@ -95,6 +95,27 @@ function pkde_drift_personal_views(string $dir): array
 }
 
 /**
+ * What the breadcrumb standard looks like on this site: whether the kit's standard is present, the separator and the home label Rank Math would
+ * actually get (the kit's filters applied), and whether Rank Math's breadcrumb module is on. Read only.
+ *
+ * @return array<string, mixed>
+ */
+function pkde_drift_breadcrumb_facts(): array
+{
+    $settings = (array) apply_filters('rank_math/frontend/breadcrumb/settings', []);
+    $strings = (array) apply_filters('rank_math/frontend/breadcrumb/strings', []);
+    $rankMath = class_exists('RankMath\\Helper');
+
+    return [
+        'kit' => function_exists('App\\breadcrumb_standard'),
+        'separator' => (string) ($settings['separator'] ?? ''),
+        'home' => (string) ($strings['home'] ?? ''),
+        'rank_math' => $rankMath,
+        'module_on' => $rankMath && \RankMath\Helper::is_breadcrumbs_enabled(),
+    ];
+}
+
+/**
  * Pure comparison of collected facts with the standard.
  *
  * @param  array<string,mixed>  $f  facts from pkde_drift_collect()
@@ -208,6 +229,21 @@ function pkde_drift_evaluate(array $f): array
     if (in_array('seo-by-rank-math', (array) ($f['active_plugins'] ?? []), true)) {
         $rm = $f['rankmath'] ?? [];
         $cmp('Rank Math is registered (registration skipped or account connected)', ! empty($rm['skip']) || ! empty($rm['connected']), 'neither rank_math_registration_skip nor a connected account: Rank Math disables its modules (sitemap, titles, schema); run `wp option update rank_math_registration_skip 1`');
+    }
+
+    // Breadcrumbs (MGR-77 parity): the kit owns the trail. Its filters force Rank Math's settings to the standard (" / ", "Home") and the kit declares
+    // theme support so the module is on whatever the wp-admin setting says; without Rank Math the kit prints its own trail in the same markup.
+    // Sites on a kit older than 2026.11.06.3 have no standard: their trail follows each site's own Rank Math settings.
+    $bc = $f['breadcrumbs'] ?? null;
+    if (is_array($bc)) {
+        $cmp(
+            'Breadcrumbs: the kit sets the standard (separator "/", label "Home")',
+            ! empty($bc['kit']) && ($bc['separator'] ?? '') === '/' && ($bc['home'] ?? '') === 'Home',
+            empty($bc['kit']) ? 'App\\breadcrumb_standard() is missing: bump pkde/sage-kit to 2026.11.06.3 or later' : 'separator "' . ($bc['separator'] ?? '') . '", label "' . ($bc['home'] ?? '') . '" (a filter or a copy overrides the kit)',
+        );
+        if (! empty($bc['rank_math'])) {
+            $cmp('Breadcrumbs: Rank Math\'s breadcrumb module is on (its BreadcrumbList schema)', ! empty($bc['module_on']), 'off: the trail is the kit\'s own, without schema (the kit declares theme support unless pkde_kit/force_rank_math_breadcrumbs is false)', true);
+        }
     }
 
     // Turnstile
@@ -376,6 +412,7 @@ function pkde_drift_collect(): array
             'connected' => ! empty(((array) get_option('rank_math_connect_data'))['api_key'] ?? ''),
         ],
         'woocommerce_active' => in_array('woocommerce', $active, true),
+        'breadcrumbs' => pkde_drift_breadcrumb_facts(),
         'cache_basket_visitors' => pkde_w3tc_cache_basket_visitors(),
         'kit_cache_safe' => function_exists('App\\no_page_cache'),
         'personal_views' => pkde_drift_personal_views(get_template_directory() . '/resources/views'),

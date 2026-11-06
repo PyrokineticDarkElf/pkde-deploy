@@ -405,3 +405,23 @@ it('never raises the basket-visitor rows on a site without WooCommerce, even if 
 
     expect(array_filter($names, fn($n) => str_contains($n, 'basket') || str_contains($n, 'Cache-safe theme') || str_contains($n, 'WooCommerce cookies')))->toBe([]);
 });
+
+it('requires the kit\'s breadcrumb standard, and tells when Rank Math\'s module is off (MGR-77 parity)', function () {
+    $facts = pkdeGoodFacts();
+    $facts['breadcrumbs'] = ['kit' => true, 'separator' => '/', 'home' => 'Home', 'rank_math' => true, 'module_on' => true];
+    $names = pkdeStatuses($facts);
+
+    expect($names['Breadcrumbs: the kit sets the standard (separator "/", label "Home")'])->toBe('PASS')
+        ->and($names['Breadcrumbs: Rank Math\'s breadcrumb module is on (its BreadcrumbList schema)'])->toBe('PASS');
+
+    $facts['breadcrumbs']['kit'] = false;
+    $facts['breadcrumbs']['separator'] = '-';
+    $facts['breadcrumbs']['module_on'] = false;
+    $names = pkdeStatuses($facts);
+
+    expect($names['Breadcrumbs: the kit sets the standard (separator "/", label "Home")'])->toBe('FAIL')
+        ->and($names['Breadcrumbs: Rank Math\'s breadcrumb module is on (its BreadcrumbList schema)'])->toBe('FAIL');
+
+    unset($facts['breadcrumbs']);
+    expect(array_keys(pkdeStatuses($facts)))->not->toContain('Breadcrumbs: the kit sets the standard (separator "/", label "Home")');
+});
