@@ -348,3 +348,48 @@ it('names the cron events the W3TC standard needs', function () {
         ->and(pkde_w3tc_cron_events(['pgcache.enabled' => true, 'pgcache.engine' => 'file_generic', 'pgcache.prime.enabled' => false]))->toBe(['w3_pgcache_cleanup'])
         ->and(pkde_w3tc_cron_events(['pgcache.enabled' => false, 'pgcache.engine' => 'file_generic', 'pgcache.prime.enabled' => true]))->toBe([]);
 });
+
+it('keeps the basket cookies rejected by default and requires them NOT rejected once the site opted in to caching basket visitors (MGR-76)', function () {
+    $facts = pkdeGoodFacts();
+    expect(pkdeStatuses($facts)['W3TC page cache skips the WooCommerce cookies'])->toBe('PASS');
+
+    $facts['cache_basket_visitors'] = true;
+    expect(pkdeStatuses($facts)['W3TC page cache serves visitors with a basket (opted in)'])->toBe('FAIL');
+
+    $facts['w3tc']['reject_cookies'] = ['other'];
+    $facts['kit_cache_safe'] = true;
+    $facts['personal_views'] = [];
+    expect(pkdeStatuses($facts)['W3TC page cache serves visitors with a basket (opted in)'])->toBe('PASS')
+        ->and(pkdeStatuses($facts)['Cache-safe theme for basket visitors: the kit marks personal pages uncacheable'])->toBe('PASS')
+        ->and(pkdeStatuses($facts)['Cache-safe theme for basket visitors: no view prints per-visitor data'])->toBe('PASS')
+        ->and(pkde_w3tc_woocommerce_cookies())->toBe(['woocommerce_items_in_cart', 'wp_woocommerce_session_'])
+        ->and(pkde_w3tc_woocommerce_cookies(true))->toBe([]);
+});
+
+it('fails an opted-in site whose theme still reads the basket on the server or lacks the kit\'s cache-safe helper (MGR-76)', function () {
+    $facts = pkdeGoodFacts();
+    $facts['cache_basket_visitors'] = true;
+    $facts['w3tc']['reject_cookies'] = [];
+    $facts['kit_cache_safe'] = false;
+    $facts['personal_views'] = ['sections/header.blade.php'];
+
+    $statuses = pkdeStatuses($facts);
+
+    expect($statuses['Cache-safe theme for basket visitors: the kit marks personal pages uncacheable'])->toBe('FAIL')
+        ->and($statuses['Cache-safe theme for basket visitors: no view prints per-visitor data'])->toBe('FAIL');
+});
+
+it('finds the theme views that read the basket, a notice, a cookie or the user, and none in a clean theme', function () {
+    $dir = sys_get_temp_dir() . '/pkde-views-' . bin2hex(random_bytes(4));
+    mkdir("$dir/sections", 0777, true);
+    file_put_contents("$dir/sections/header.blade.php", "@if ((\$count = WC()->cart->get_cart_contents_count()) > 0)");
+    file_put_contents("$dir/sections/footer.blade.php", '<footer>{{ date("Y") }}</footer>');
+    file_put_contents("$dir/notice.blade.php", '@php(wc_print_notices())');
+
+    expect(pkde_drift_personal_views($dir))->toBe(['notice.blade.php', 'sections/header.blade.php'])
+        ->and(pkde_drift_personal_views("$dir/missing"))->toBe([]);
+
+    array_map('unlink', ["$dir/sections/header.blade.php", "$dir/sections/footer.blade.php", "$dir/notice.blade.php"]);
+    rmdir("$dir/sections");
+    rmdir($dir);
+});

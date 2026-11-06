@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026.11.06
+
+Opt-in for caching visitors with a basket (owner go, MGR-76; needs sage-kit 2026.11.06, whose pages carry nothing personal). **Adopt:** bump the package and the workflow tag. Nothing changes until a site opts in: `wp option update pkde_cache_basket_visitors 1`, then re-run `bin/deploy/w3tc-settings.php` (the audit and the steps are in the kit's `docs/page-cache.md`).
+
+- **`pkde_cache_basket_visitors` (a WordPress option, default off).** `pkde_w3tc_woocommerce_cookies()` still lists `woocommerce_items_in_cart` and `wp_woocommerce_session_` as the cookies that skip the page cache; with the option set to `1`, `w3tc-settings.php` takes them OUT of W3TC's reject list (and logs which way it went), so a visitor with a basket gets the cached blog, shop and home pages. Safe default: a site on an older theme keeps the old behaviour.
+- **Drift check, three rows while a site is opted in:** "W3TC page cache serves visitors with a basket (opted in)" (the cookies must NOT be rejected), "Cache-safe theme for basket visitors: the kit marks personal pages uncacheable" (FAIL when `App\no_page_cache()` is missing: the kit is older than 2026.11.06) and "... no view prints per-visitor data" (FAIL while a theme view reads the basket, a notice, a cookie or the user on the server; the scan is read only, `pkde_drift_personal_views()`). Without the opt-in the old row ("W3TC page cache skips the WooCommerce cookies") stays as it was.
+- **Docs fix:** the 2026.11.05 entry's cron line is the corrected Scheduled Task form.
+
 ## 2026.11.05
 
 From the bb and tcs staging checks (a page cache that looked configured and did nothing). **Adopt:** bump the package and the workflow tag; on each site re-run `bash bin/deploy/wp.sh eval-file bin/deploy/w3tc-settings.php` once (it now schedules the cron events) and read the drift check.
@@ -7,7 +15,7 @@ From the bb and tcs staging checks (a page cache that looked configured and did 
 - **`w3tc-settings.php` schedules W3TC's cron events.** W3TC registers `w3_pgcache_prime` (the sitemap preloader) and `w3_pgcache_cleanup` (the page-cache garbage collection) only when settings are saved in wp-admin; applying the standard by script wrote the options and left both unscheduled (bb staging: neither event existed; tcs staging: cached pages 48 hours old against a 24 hour lifetime). The script now schedules any that is missing, idempotently, from the new pure `pkde_w3tc_cron_events()` in `w3tc-standard.php`.
 - **Four new drift rows, only while the page cache is on:** "WP_CACHE is true (the page cache serves)", "W3TC preload cron event is scheduled" (skipped when the preloader is off), "W3TC cleanup cron event is scheduled", and "W3TC newest cached page is younger than the lifetime" (FAIL on an empty cache or a page older than the lifetime plus an hour: the preloader or GC is not running). Local environments SKIP them.
 - **`activate-release.sh` warns** (never fails) when the release contains W3 Total Cache and the shared env file has no `WP_CACHE=true`: without it WordPress never loads the page-cache drop-in (bb staging). Tested.
-- **Docs (the template's launch guide):** "W3TC: WP_CACHE, the cron events and a server-side cron": WP-Cron only runs on a visit and a gated staging site gets none, so give the package a My20i cron every 5 minutes: `cd ~/deploy/<env>/current && bash bin/deploy/wp.sh cron event run --due-now --quiet`, with `DISABLE_WP_CRON=true` in the env file.
+- **Docs (the template's launch guide):** "W3TC: WP_CACHE, the cron events and a server-side cron": WP-Cron only runs on a visit and a gated staging site gets none, so give the package a My20i Scheduled Task every 5 minutes with an interpreter and an ABSOLUTE script path only (no `cd`, `~` or `&&`): the PHP binary then the absolute path of the release's `web/wp/wp-cron.php` (corrected 2026-11-06; the launch guide has the exact form).
 
 ## 2026.11.04.3
 

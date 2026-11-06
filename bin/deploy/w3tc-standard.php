@@ -37,10 +37,26 @@ function pkde_w3tc_standard(string $sitemap): array
     ];
 }
 
-/** Cookies that must skip the page cache on a shop: a visitor with a basket must never be served (or served to) a shared page. */
-function pkde_w3tc_woocommerce_cookies(): array
+/**
+ * Cookies that skip the page cache on a shop: by default a visitor with a basket is never served (or served to) a shared page. A site whose pages carry
+ * nothing personal (kit 2026.11.06: the basket count is filled in by the browser, notices mark their page uncacheable; the audit in the kit's
+ * docs/page-cache.md) opts in with the WordPress option `pkde_cache_basket_visitors` = 1, and then these cookies are NOT rejected (MGR-76).
+ */
+function pkde_w3tc_woocommerce_cookies(bool $cacheBasketVisitors = false): array
 {
-    return ['woocommerce_items_in_cart', 'wp_woocommerce_session_'];
+    return $cacheBasketVisitors ? [] : ['woocommerce_items_in_cart', 'wp_woocommerce_session_'];
+}
+
+/** The two cookies the opt-in lets through (the names the default list rejects). */
+function pkde_w3tc_basket_cookies(): array
+{
+    return pkde_w3tc_woocommerce_cookies(false);
+}
+
+/** Whether this site opted in to serving cached pages to visitors with a basket (`wp option update pkde_cache_basket_visitors 1`). */
+function pkde_w3tc_cache_basket_visitors(): bool
+{
+    return function_exists('get_option') && (string) get_option('pkde_cache_basket_visitors', '') === '1';
 }
 
 /**

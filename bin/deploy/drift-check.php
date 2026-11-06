@@ -71,6 +71,30 @@ function pkde_drift_is_placeholder_email(string $email): bool
 }
 
 /**
+ * Theme view files that read per-visitor data on the server (the basket, a pending notice, a cookie, the user): each one is a leak when the page
+ * cache serves visitors with a basket (MGR-76). Read only; the kit's own views live in the package, not here. Returns paths relative to $dir.
+ *
+ * @return list<string>
+ */
+function pkde_drift_personal_views(string $dir): array
+{
+    if (! is_dir($dir)) {
+        return [];
+    }
+
+    $pattern = '/WC\(\)->(?:cart|session|customer)|get_cart_contents_count|wc_print_notices|wc_get_notices|wp_get_current_user|get_current_user_id|\$_COOKIE|wp_get_current_commenter|comment_form\(/';
+    $found = [];
+    foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS)) as $file) {
+        if ($file->isFile() && str_ends_with($file->getFilename(), '.php') && preg_match($pattern, (string) file_get_contents($file->getPathname()))) {
+            $found[] = ltrim(substr($file->getPathname(), strlen($dir)), '/');
+        }
+    }
+    sort($found);
+
+    return $found;
+}
+
+/**
  * Pure comparison of collected facts with the standard.
  *
  * @param  array<string,mixed>  $f  facts from pkde_drift_collect()
@@ -141,8 +165,18 @@ function pkde_drift_evaluate(array $f): array
             $cmp("W3TC $key", $ok, 'expected ' . $show($want) . ', got ' . $show($got), true);
         }
         if (! empty($f['woocommerce_active'])) {
-            $missing = array_diff(pkde_w3tc_woocommerce_cookies(), (array) ($w3['reject_cookies'] ?? []));
-            $cmp('W3TC page cache skips the WooCommerce cookies', $missing === [], 'missing: ' . implode(', ', $missing), true);
+            // Default: the basket cookies skip the page cache. Opted in (pkde_cache_basket_visitors = 1, MGR-76): they must NOT, or the opt-in does nothing.
+            if (! empty($f['cache_basket_visitors'])) {
+                $rejected = array_intersect(pkde_w3tc_basket_cookies(), (array) ($w3['reject_cookies'] ?? []));
+                $cmp('W3TC page cache serves visitors with a basket (opted in)', $rejected === [], 'still rejected: ' . implode(', ', $rejected) . ' (re-run bin/deploy/w3tc-settings.php)', true);
+                // The opt-in is only safe while no page prints per-visitor data: the kit's cache-safe basket count (App\no_page_cache exists) and no theme view reading the basket.
+                $cmp('Cache-safe theme for basket visitors: the kit marks personal pages uncacheable', ! empty($f['kit_cache_safe']), 'App\\no_page_cache() is missing: bump pkde/sage-kit to 2026.11.06 or later before opting in', true);
+                $personal = (array) ($f['personal_views'] ?? []);
+                $cmp('Cache-safe theme for basket visitors: no view prints per-visitor data', $personal === [], 'read the basket, a notice, a cookie or the user: ' . implode(', ', $personal), true);
+            } else {
+                $missing = array_diff(pkde_w3tc_woocommerce_cookies(), (array) ($w3['reject_cookies'] ?? []));
+                $cmp('W3TC page cache skips the WooCommerce cookies', $missing === [], 'missing: ' . implode(', ', $missing), true);
+            }
         }
     }
 
@@ -342,6 +376,9 @@ function pkde_drift_collect(): array
             'connected' => ! empty(((array) get_option('rank_math_connect_data'))['api_key'] ?? ''),
         ],
         'woocommerce_active' => in_array('woocommerce', $active, true),
+        'cache_basket_visitors' => pkde_w3tc_cache_basket_visitors(),
+        'kit_cache_safe' => function_exists('App\\no_page_cache'),
+        'personal_views' => pkde_drift_personal_views(get_template_directory() . '/resources/views'),
         'turnstile' => [
             'appearance' => get_option('cfturnstile_appearance', 'always'),
             'login' => get_option('cfturnstile_login'),
