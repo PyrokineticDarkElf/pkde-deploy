@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026.11.06.2
+
+- **Wording only:** the breadcrumb module row no longer says the kit prints its own trail when Rank Math's module is off (the kit builds none, owner 2026-11-06; sage-kit 2026.11.06.4). Off now means no trail outside the shop and no BreadcrumbList schema. **Adopt:** bump the package and the workflow tags.
+
+
 ## 2026.11.06.1
 
 Breadcrumb standard (MGR-77 parity; needs sage-kit 2026.11.06.3, which owns the trail). **Adopt:** bump the package and the workflow tags; read the drift check.

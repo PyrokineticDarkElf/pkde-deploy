@@ -232,7 +232,7 @@ function pkde_drift_evaluate(array $f): array
     }
 
     // Breadcrumbs (MGR-77 parity): the kit owns the trail. Its filters force Rank Math's settings to the standard (" / ", "Home") and the kit declares
-    // theme support so the module is on whatever the wp-admin setting says; without Rank Math the kit prints its own trail in the same markup.
+    // theme support so the module is on whatever the wp-admin setting says. The kit builds no trail of its own (owner, 2026-11-06).
     // Sites on a kit older than 2026.11.06.3 have no standard: their trail follows each site's own Rank Math settings.
     $bc = $f['breadcrumbs'] ?? null;
     if (is_array($bc)) {
@@ -242,7 +242,7 @@ function pkde_drift_evaluate(array $f): array
             empty($bc['kit']) ? 'App\\breadcrumb_standard() is missing: bump pkde/sage-kit to 2026.11.06.3 or later' : 'separator "' . ($bc['separator'] ?? '') . '", label "' . ($bc['home'] ?? '') . '" (a filter or a copy overrides the kit)',
         );
         if (! empty($bc['rank_math'])) {
-            $cmp('Breadcrumbs: Rank Math\'s breadcrumb module is on (its BreadcrumbList schema)', ! empty($bc['module_on']), 'off: the trail is the kit\'s own, without schema (the kit declares theme support unless pkde_kit/force_rank_math_breadcrumbs is false)', true);
+            $cmp('Breadcrumbs: Rank Math\'s breadcrumb module is on (its BreadcrumbList schema)', ! empty($bc['module_on']), 'off: pages outside the shop have no trail and no BreadcrumbList schema (the kit declares theme support unless pkde_kit/force_rank_math_breadcrumbs is false)', true);
         }
     }
 
