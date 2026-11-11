@@ -231,6 +231,12 @@ function pkde_drift_evaluate(array $f): array
         $cmp('Rank Math is registered (registration skipped or account connected)', ! empty($rm['skip']) || ! empty($rm['connected']), 'neither rank_math_registration_skip nor a connected account: Rank Math disables its modules (sitemap, titles, schema); run `wp option update rank_math_registration_skip 1`');
     }
 
+    // Relevanssi (the shop's search, TPL-133): installed but never indexed, it answers every search with nothing. settings script: the kit's
+    // bin/relevanssi-settings.php rebuilds the index. Only while the plugin is active; the fact is the number of rows in its index table.
+    if (in_array('relevanssi', (array) ($f['active_plugins'] ?? []), true) && array_key_exists('relevanssi_indexed', $f)) {
+        $cmp('Relevanssi index is built (searches find products)', (int) $f['relevanssi_indexed'] > 0, 'the Relevanssi index is empty: run wp eval-file vendor/pkde/sage-kit/bin/relevanssi-settings.php (it rebuilds the index)', true);
+    }
+
     // Breadcrumbs (MGR-77 parity): the kit owns the trail. Its filters force Rank Math's settings to the standard (" / ", "Home") and the kit declares
     // theme support so the module is on whatever the wp-admin setting says. The kit builds no trail of its own (owner, 2026-11-06).
     // Sites on a kit older than 2026.11.06.3 have no standard: their trail follows each site's own Rank Math settings.
@@ -332,6 +338,20 @@ function pkde_drift_evaluate(array $f): array
 }
 
 /** Reads the facts from WordPress. Only reads; secrets are reduced to presence. */
+/** Rows in Relevanssi's index table (0 when the table does not exist yet). */
+function pkde_drift_relevanssi_indexed(): int
+{
+    global $wpdb;
+
+    $table = $wpdb->prefix . 'relevanssi';
+
+    if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table)) !== $table) {
+        return 0;
+    }
+
+    return (int) $wpdb->get_var("SELECT COUNT(*) FROM `$table`");
+}
+
 function pkde_drift_collect(): array
 {
     $wfKeys = array_merge(array_keys(pkde_drift_wordfence_standard()), ['alertEmails']);
@@ -411,6 +431,7 @@ function pkde_drift_collect(): array
             'skip' => (bool) get_option('rank_math_registration_skip'),
             'connected' => ! empty(((array) get_option('rank_math_connect_data'))['api_key'] ?? ''),
         ],
+        'relevanssi_indexed' => in_array('relevanssi', $active, true) ? pkde_drift_relevanssi_indexed() : null,
         'woocommerce_active' => in_array('woocommerce', $active, true),
         'breadcrumbs' => pkde_drift_breadcrumb_facts(),
         'cache_basket_visitors' => pkde_w3tc_cache_basket_visitors(),

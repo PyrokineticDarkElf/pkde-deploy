@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026.11.11
+
+From the template backlog (TPL-133). **Adopt:** bump the package and the workflow tag; read the drift check.
+
+- **Drift row "Relevanssi index is built (searches find products)".** Only while Relevanssi is active: FAIL on staging and production when its index table is empty (the plugin is installed and every search finds nothing), skipped on a local stack. The cure is the kit's `bin/relevanssi-settings.php`, which rebuilds the index (the template's shop setup now runs it). A site without Relevanssi is unaffected.
+
 ## 2026.11.06.2
 
 - **Wording only:** the breadcrumb module row no longer says the kit prints its own trail when Rank Math's module is off (the kit builds none, owner 2026-11-06; sage-kit 2026.11.06.4). Off now means no trail outside the shop and no BreadcrumbList schema. **Adopt:** bump the package and the workflow tags.

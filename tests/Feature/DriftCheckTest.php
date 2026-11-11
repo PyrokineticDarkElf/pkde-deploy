@@ -425,3 +425,21 @@ it('requires the kit\'s breadcrumb standard, and tells when Rank Math\'s module 
     unset($facts['breadcrumbs']);
     expect(array_keys(pkdeStatuses($facts)))->not->toContain('Breadcrumbs: the kit sets the standard (separator "/", label "Home")');
 });
+
+it('fails an active Relevanssi whose index is empty and says nothing when the plugin is not there (TPL-133)', function () {
+    $check = 'Relevanssi index is built (searches find products)';
+    $facts = pkdeGoodFacts();
+
+    expect(pkdeStatuses($facts))->not->toHaveKey($check);
+
+    $facts['active_plugins'][] = 'relevanssi';
+    $facts['relevanssi_indexed'] = 240;
+    expect(pkdeStatuses($facts)[$check])->toBe('PASS');
+
+    $facts['relevanssi_indexed'] = 0;
+    expect(pkdeStatuses($facts)[$check])->toBe('FAIL');
+
+    // A local stack may not have built the index: skipped there, as the other cache rows are.
+    $facts['env'] = 'development';
+    expect(pkdeStatuses($facts)[$check])->toBe('SKIP');
+});
