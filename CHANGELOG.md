@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026.11.12.5
+
+WP-84 bug, second data point (jsd staging: two sessions closed by the host at `wp.sh option update admin_email <address>` with the output piped through sed; the same change as `update_option()` in an eval-file, script written to the home directory and output sent to a file, worked). **Adopt:** bump the package and the workflow tag (with 2026.11.12.4).
+
+- **`wordfence-cloudflare.sh` sends its PHP as ssh stdin into a temporary file and runs `eval-file`, its output going to a file that is read back.** The remote command line is fixed text (a path and the WP-CLI call); the PHP is no longer in it (it was an inline `wp eval '...'` of about 1.3 KB). The temporary files are removed whatever happens and the PHP's exit code is the script's. rp's failing step carried no address on the command line and printed none (the old PHP wrote `howGetIPs` and a version-named option, not `alertEmails`), so the address hypothesis does not explain rp; what the two failures share is a command or output streamed over the live session, and what worked on both is the file pattern. Test: `tests/deploy/wordfence-cloudflare.test.sh`.
+
 ## 2026.11.12.4
 
 WP-84 bug (rp staging: 20i closed the SSH session twice at the `wp eval` step of `wordfence-cloudflare.sh`). **Adopt:** bump the package and the workflow tag; re-run `wordfence-cloudflare.sh` for sites that have not had a clean run (the sites hold that step until the manager releases it).

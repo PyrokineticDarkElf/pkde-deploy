@@ -39,7 +39,7 @@ case "${1:-}" in
     *) echo "Usage: $0 <staging|production>" >&2; exit 2 ;;
 esac
 
-# The PHP has no single quotes, so it can be wrapped in them for the remote shell. It runs with `--skip-plugins --skip-themes`: Wordfence is NOT loaded (a full
+# The PHP runs with `--skip-plugins --skip-themes`: Wordfence is NOT loaded (a full
 # plugin bootstrap for three option writes is what a 20i shell session may kill, WP-84), so wfConfig is written with plain SQL, the same rows wfConfig::set() writes
 # for these keys (no side effects for howGetIPs or the dismiss option). bin/deploy/wfconfig-sql.php holds the same helpers for the release step.
 php=$(cat <<'PHP'
@@ -74,7 +74,9 @@ need() {
 }
 host=$(need SSH_HOST); port=$(need SSH_PORT); user=$(need SSH_USER); path=$(need DEPLOY_PATH)
 
-# WP-CLI on the host: WP_CLI (set here, may use $HOME) wins; else ~/bin/wp; else /usr/local/bin/wp.
-# Resolved on the host, hence the escaped $.
-ssh -p "$port" "$user@$host" \
-    "cd '$path/current' && WP=\"${WP_CLI:-}\" && { [ -n \"\$WP\" ] || { [ -f \"\$HOME/bin/wp\" ] && WP=\"\$HOME/bin/wp\" || WP=/usr/local/bin/wp; }; } && php83 -d memory_limit=512M \"\$WP\" --skip-plugins --skip-themes eval '$php'"
+# The PHP travels as ssh STDIN into a temporary file on the host and runs with eval-file, its output goes to a file and is read back: nothing but this fixed
+# command is on the remote command line, and no data is streamed while PHP runs. (Two 20i sessions were closed by the host at an inline `wp eval '...'` and at
+# `wp option update admin_email <address>`, and not at the same work done from a file, WP-84; the cause is not proven, this is the pattern that worked.)
+# WP-CLI on the host: WP_CLI (set here, may use $HOME) wins; else ~/bin/wp; else /usr/local/bin/wp. Resolved on the host, hence the escaped $.
+printf '<?php\n%s\n' "$php" | ssh -p "$port" "$user@$host" \
+    "f=\$(mktemp \"\$HOME/.wfcf.XXXXXX\") && cat > \"\$f\" && cd '$path/current' && WP=\"${WP_CLI:-}\" && { [ -n \"\$WP\" ] || { [ -f \"\$HOME/bin/wp\" ] && WP=\"\$HOME/bin/wp\" || WP=/usr/local/bin/wp; }; } && { php83 -d memory_limit=512M \"\$WP\" --skip-plugins --skip-themes eval-file \"\$f\" >\"\$f.out\" 2>&1; rc=\$?; cat \"\$f.out\"; rm -f \"\$f\" \"\$f.out\"; exit \$rc; }"
