@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026.11.12
+
+From the manager (WP-84, owner 2026-11-12: Wordfence Diagnostics shows REMOTE_ADDR as the visitor, so it stays). **Adopt:** bump the package and the workflow tag, then run `vendor/pkde/deploy/bin/deploy/wordfence-cloudflare.sh staging` (and `production` in the go session).
+
+- **`bin/deploy/wordfence-cloudflare.sh` also dismisses the wp-admin notice "How does Wordfence get IPs is misconfigured"** (Wordfence recommends CF-Connecting-IP behind Cloudflare). It sets the option Wordfence's own "No thanks" link sets, `misconfiguredHowGetIPsChoice<version>`; idempotent ("Already up to date" on a re-run). The name carries the plugin version, so a Wordfence update brings the notice back until the script runs again; the template's `config/application.php` defines `WORDFENCE_DISABLE_MISCONFIGURED_HOWGETIPS` (Wordfence's own switch) to end that. The same-named scan finding is not touched: Ignore it once in Wordfence > Scan.
+
 ## 2026.11.11
 
 From the template backlog (TPL-133). **Adopt:** bump the package and the workflow tag; read the drift check.

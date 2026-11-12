@@ -16,6 +16,13 @@
 # A host that does NOT rewrite REMOTE_ADDR would show every visitor as a Cloudflare address; the two probes in the
 # launch guide ("Behind Cloudflare") check which kind of host this is.
 #
+# It also dismisses the wp-admin notice "How does Wordfence get IPs is misconfigured", which recommends CF-Connecting-IP behind
+# Cloudflare (owner 2026-11-12: Wordfence Diagnostics shows REMOTE_ADDR as the visitor, so REMOTE_ADDR stays). It sets the option
+# Wordfence's own "No thanks" link sets, misconfiguredHowGetIPsChoice<version>. The name carries the plugin version, so after a
+# Wordfence update the notice returns until this runs again; the template defines WORDFENCE_DISABLE_MISCONFIGURED_HOWGETIPS (Wordfence's
+# own switch) in config/application.php to keep it away for good. The scan finding of the same name is not touched: Ignore it once
+# in Wordfence > Scan.
+#
 # Usage:  bin/deploy/wordfence-cloudflare.sh <staging|production>
 #
 # Connects like the deploy workflow does, from the same names as its GitHub secrets exported in your shell
@@ -41,8 +48,13 @@ if (wfConfig::get("howGetIPs") !== "REMOTE_ADDR") {
     wfConfig::set("detectProxyNextCheck", false, wfConfig::DONT_AUTOLOAD);
     $changed = true;
 }
+$dismiss = "misconfiguredHowGetIPsChoice" . WORDFENCE_VERSION;
+if (! wfUtils::truthyToBoolean(wfConfig::get($dismiss))) {
+    wfConfig::set($dismiss, "1");
+    $changed = true;
+}
 $now = wfConfig::get("howGetIPs");
-echo ($changed ? "Updated" : "Already up to date"), ": howGetIPs=", $now, "\n";
+echo ($changed ? "Updated" : "Already up to date"), ": howGetIPs=", $now, ", notice dismissed for ", WORDFENCE_VERSION, "\n";
 exit($now === "REMOTE_ADDR" ? 0 : 1);
 PHP
 )
