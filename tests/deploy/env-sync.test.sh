@@ -39,7 +39,7 @@ cat > "$SRV" <<EOF
 # server file
 DB_NAME=wp
 DB_USER=wpuser
-DB_PASSWORD='old-db-password'
+DB_PASSWORD='example-old-db-pw'
 DB_HOST=localhost
 WP_ENV=staging
 WP_HOME=http://localhost
@@ -86,7 +86,7 @@ has "dry run lists the addition" "$out" "to add (1): SMTP_PASSWORD"
 has "dry run keeps server-only" "$out" "on the server only, kept (use --prune to remove) (1): SERVER_ONLY"
 has "dry run says nothing was written" "$out" "Dry run: nothing was written"
 check "dry run left the file alone" "$(cat "$SRV")" "$before"
-for canary in "$SALT" "$DBPW" "$SMTP" old-db-password; do lacks "no value in output ($canary)" "$out" "$canary"; done
+for canary in "$SALT" "$DBPW" "$SMTP" example-old-db-pw; do lacks "no value in output ($canary)" "$out" "$canary"; done
 lacks "no value on a command line (op)" "$(cat "$T/op.log")" "$DBPW"
 lacks "no value on a command line (ssh)" "$(cat "$T/ssh.log")" "$DBPW"
 has "account is passed to op" "$(cat "$T/op.log")" "--account A"
@@ -125,7 +125,7 @@ has "interpolation kept verbatim" "$(cat "$SRV")" 'WP_SITEURL="${WP_HOME}/wp"'
 has "server-only variable kept" "$(cat "$SRV")" "SERVER_ONLY=keepme"
 has "comment kept" "$(cat "$SRV")" "# server file"
 check "one backup" "$(ls -a "$T/srv/shared" | grep -c '^\.env\.bak-')" "1"
-has "backup is the old file" "$(cat "$T"/srv/shared/.env.bak-*)" "old-db-password"
+has "backup is the old file" "$(cat "$T"/srv/shared/.env.bak-*)" "example-old-db-pw"
 for canary in "$SALT" "$DBPW" "$SMTP"; do lacks "apply output has no value ($canary)" "$out" "$canary"; done
 lacks "apply: no value on the ssh command line" "$(cat "$T/ssh.log")" "$DBPW"
 
