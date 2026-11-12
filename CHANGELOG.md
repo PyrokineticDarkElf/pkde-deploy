@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026.11.12.4
+
+WP-84 bug (rp staging: 20i closed the SSH session twice at the `wp eval` step of `wordfence-cloudflare.sh`). **Adopt:** bump the package and the workflow tag; re-run `wordfence-cloudflare.sh` for sites that have not had a clean run (the sites hold that step until the manager releases it).
+
+- **`wordfence-cloudflare.sh` no longer loads Wordfence.** It runs `php83 -d memory_limit=512M <wp> --skip-plugins --skip-themes eval '...'` and reads and writes Wordfence's `wfconfig` table with plain SQL (`howGetIPs`, `detectProxyNextCheck`, the dismiss option), the same rows `wfConfig::set()` writes for those keys. Measured on the template stack: the eval itself cost 4 ms, 6 queries, no HTTP request and no extra memory; the cost was the plugin bootstrap (98 MB peak with the template's plugins, no `memory_limit` flag on the old call). Without plugins the peak is 53 MB. The cause of the 20i disconnect is not proven (no site access); this removes the heaviest part and the missing memory flag.
+- **The release step `wordfence-standard.php` takes the same path**: `activate-release.sh` runs it with `--skip-plugins --skip-themes` and it writes `alertEmails` through the new `wfconfig-sql.php` (shipped in every release). It was warn-only, killed after `WP_CLI_TIMEOUT`, and could not fail a deploy, but it was a third full bootstrap.
+
 ## 2026.11.12.3
 
 WP-87 follow-up. **Adopt:** bump the package and the workflow tag (with 2026.11.12.2).

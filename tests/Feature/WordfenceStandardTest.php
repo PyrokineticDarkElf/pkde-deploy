@@ -1,8 +1,8 @@
 <?php
 
 /**
- * bin/deploy/wordfence-standard.php (WP-87) in a child PHP with a fake wfConfig: the release step sets Wordfence's alertEmails to exactly the alert address from
- * .env, leaves a site alone that names none, and never prints an address.
+ * bin/deploy/wordfence-standard.php (WP-87) in a child PHP with a fake $wpdb and fake options (no WordPress, no Wordfence): the release step sets Wordfence's
+ * alertEmails, in its wfconfig table, to exactly the alert address from .env, leaves a site alone that names none, and never prints an address.
  */
 function pkdeRunWordfenceStandard(array $constants, ?string $current, bool $wordfence = true): array
 {
@@ -10,9 +10,18 @@ function pkdeRunWordfenceStandard(array $constants, ?string $current, bool $word
     foreach ($constants as $name => $value) {
         $defines .= 'define(' . var_export($name, true) . ', ' . var_export($value, true) . ");\n";
     }
-    $fake = $wordfence ? 'class wfConfig { public static array $d = ' . var_export(['alertEmails' => $current], true) . '; public static function get($k) { return self::$d[$k] ?? null; } public static function set($k, $v) { self::$d[$k] = $v; } }' : '';
+    $rows = $current === null ? [] : ['alertEmails' => $current];
+    $fake = 'function get_option($k, $d = false) { return $k === "active_plugins" ? ' . ($wordfence ? '["akismet/akismet.php", "wordfence/wordfence.php"]' : '["akismet/akismet.php"]') . ' : $d; }
+function is_multisite() { return false; }
+class FakeWpdb { public string $base_prefix = "wp_"; public array $rows = ' . var_export($rows, true) . ';
+  public function prepare($q, ...$args) { return [$q, $args]; }
+  public function get_var($p) { [$q, $a] = $p;
+    if (str_contains($q, "information_schema")) { return $a[0] === "wp_wfconfig" ? "wp_wfConfig" : null; }
+    return $this->rows[$a[0]] ?? null; }
+  public function query($p) { [$q, $a] = $p; $this->rows[$a[0]] = $a[1]; return 1; } }
+$wpdb = new FakeWpdb();';
     $prelude = "<?php\n$defines$fake\nrequire " . var_export(dirname(__DIR__, 2) . '/bin/deploy/wordfence-standard.php', true) . ";\n"
-        . ($wordfence ? "echo 'FINAL=', wfConfig::get('alertEmails'), \"\\n\";\n" : '');
+        . "echo 'FINAL=', \$wpdb->rows['alertEmails'] ?? '', \"\\n\";\n";
     $file = tempnam(sys_get_temp_dir(), 'wfstd');
     file_put_contents($file, $prelude);
     $out = (string) shell_exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($file) . ' 2>&1');
@@ -50,6 +59,6 @@ it('leaves a site alone that names no address, or has no Wordfence', function ()
     [$out, $final] = pkdeRunWordfenceStandard([], 'keep@else.test');
     expect($out)->toContain('left alone')->and($final)->toBe('keep@else.test');
 
-    [$out] = pkdeRunWordfenceStandard(['WP_ADMIN_EMAIL' => 'office@acme-widgets.co.uk'], null, false);
-    expect($out)->toContain('Wordfence is not active');
+    [$out, $final] = pkdeRunWordfenceStandard(['WP_ADMIN_EMAIL' => 'office@acme-widgets.co.uk'], 'keep@else.test', false);
+    expect($out)->toContain('Wordfence is not active')->and($final)->toBe('keep@else.test');
 });

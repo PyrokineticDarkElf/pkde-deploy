@@ -39,22 +39,30 @@ case "${1:-}" in
     *) echo "Usage: $0 <staging|production>" >&2; exit 2 ;;
 esac
 
-# The PHP has no single quotes, so it can be wrapped in them for the remote shell.
+# The PHP has no single quotes, so it can be wrapped in them for the remote shell. It runs with `--skip-plugins --skip-themes`: Wordfence is NOT loaded (a full
+# plugin bootstrap for three option writes is what a 20i shell session may kill, WP-84), so wfConfig is written with plain SQL, the same rows wfConfig::set() writes
+# for these keys (no side effects for howGetIPs or the dismiss option). bin/deploy/wfconfig-sql.php holds the same helpers for the release step.
 php=$(cat <<'PHP'
-if (! class_exists("wfConfig")) { fwrite(STDERR, "Wordfence is not active here.\n"); exit(1); }
+global $wpdb;
+if (! in_array("wordfence/wordfence.php", (array) get_option("active_plugins", []), true)) { fwrite(STDERR, "Wordfence is not active here.\n"); exit(1); }
+$t = $wpdb->get_var($wpdb->prepare("SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND LOWER(table_name) = %s LIMIT 1", strtolower($wpdb->base_prefix . "wfconfig")));
+if (! is_string($t) || $t === "") { fwrite(STDERR, "Wordfence has no settings table here.\n"); exit(1); }
+$get = function ($n) use ($wpdb, $t) { return $wpdb->get_var($wpdb->prepare("SELECT val FROM `$t` WHERE name = %s", $n)); };
+$set = function ($n, $v, $a = "yes") use ($wpdb, $t) { $wpdb->query($wpdb->prepare("INSERT INTO `$t` (name, val, autoload) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE val = %s, autoload = %s", $n, $v, $a, $v, $a)); };
 $changed = false;
-if (wfConfig::get("howGetIPs") !== "REMOTE_ADDR") {
-    wfConfig::set("howGetIPs", "REMOTE_ADDR");
-    wfConfig::set("detectProxyNextCheck", false, wfConfig::DONT_AUTOLOAD);
+if ($get("howGetIPs") !== "REMOTE_ADDR") {
+    $set("howGetIPs", "REMOTE_ADDR");
+    $set("detectProxyNextCheck", "", "no");
     $changed = true;
 }
-$dismiss = "misconfiguredHowGetIPsChoice" . WORDFENCE_VERSION;
-if (! wfUtils::truthyToBoolean(wfConfig::get($dismiss))) {
-    wfConfig::set($dismiss, "1");
+$head = (string) @file_get_contents((defined("WP_PLUGIN_DIR") ? WP_PLUGIN_DIR : WP_CONTENT_DIR . "/plugins") . "/wordfence/wordfence.php", false, null, 0, 8192);
+$version = preg_match("/^\s*\*?\s*Version:\s*([0-9][0-9A-Za-z.\-]*)/mi", $head, $m) ? $m[1] : "";
+if ($version !== "" && $get("misconfiguredHowGetIPsChoice" . $version) !== "1") {
+    $set("misconfiguredHowGetIPsChoice" . $version, "1");
     $changed = true;
 }
-$now = wfConfig::get("howGetIPs");
-echo ($changed ? "Updated" : "Already up to date"), ": howGetIPs=", $now, ", notice dismissed for ", WORDFENCE_VERSION, "\n";
+$now = $get("howGetIPs");
+echo ($changed ? "Updated" : "Already up to date"), ": howGetIPs=", $now, ", notice dismissed for ", ($version !== "" ? $version : "(version unknown)"), "\n";
 exit($now === "REMOTE_ADDR" ? 0 : 1);
 PHP
 )
@@ -69,4 +77,4 @@ host=$(need SSH_HOST); port=$(need SSH_PORT); user=$(need SSH_USER); path=$(need
 # WP-CLI on the host: WP_CLI (set here, may use $HOME) wins; else ~/bin/wp; else /usr/local/bin/wp.
 # Resolved on the host, hence the escaped $.
 ssh -p "$port" "$user@$host" \
-    "cd '$path/current' && WP=\"${WP_CLI:-}\" && { [ -n \"\$WP\" ] || { [ -f \"\$HOME/bin/wp\" ] && WP=\"\$HOME/bin/wp\" || WP=/usr/local/bin/wp; }; } && php83 \"\$WP\" eval '$php'"
+    "cd '$path/current' && WP=\"${WP_CLI:-}\" && { [ -n \"\$WP\" ] || { [ -f \"\$HOME/bin/wp\" ] && WP=\"\$HOME/bin/wp\" || WP=/usr/local/bin/wp; }; } && php83 -d memory_limit=512M \"\$WP\" --skip-plugins --skip-themes eval '$php'"

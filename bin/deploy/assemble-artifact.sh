@@ -73,6 +73,6 @@ cp composer.json composer.lock wp-cli.yml "$DEST/"
 # The server-side checks the launch guide runs from the release (`wp eval-file bin/deploy/...`, `bash bin/deploy/perf-probe.sh`): no secrets, and outside the docroot
 # (web/), so they are not web-reachable. Only these files, not the rest of bin/deploy (CI-side scripts).
 mkdir -p "$DEST/bin/deploy"
-cp "$TOOLS_DIR/drift-check.php" "$TOOLS_DIR/w3tc-standard.php" "$TOOLS_DIR/w3tc-settings.php" "$TOOLS_DIR/alert-email.php" "$TOOLS_DIR/wordfence-standard.php" "$TOOLS_DIR/perf-probe.php" "$TOOLS_DIR/perf-probe.sh" "$TOOLS_DIR/wp.sh" "$DEST/bin/deploy/"
+cp "$TOOLS_DIR/drift-check.php" "$TOOLS_DIR/w3tc-standard.php" "$TOOLS_DIR/w3tc-settings.php" "$TOOLS_DIR/alert-email.php" "$TOOLS_DIR/wordfence-standard.php" "$TOOLS_DIR/wfconfig-sql.php" "$TOOLS_DIR/perf-probe.php" "$TOOLS_DIR/perf-probe.sh" "$TOOLS_DIR/wp.sh" "$DEST/bin/deploy/"
 
 echo "Assembled deploy artifact in $DEST"
