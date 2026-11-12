@@ -19,6 +19,7 @@
  */
 
 require_once __DIR__ . '/w3tc-standard.php';
+require_once __DIR__ . '/alert-email.php';
 
 const PKDE_DRIFT_SUBJECT = 'New website enquiry - [_site_title] - [your-name]';
 
@@ -178,13 +179,23 @@ function pkde_drift_evaluate(array $f): array
             $got = isset($wf[$key]) ? (string) $wf[$key] : '(unset)';
             $cmp("Wordfence $key", $got === $want, "expected $want, got $got");
         }
-        $emails = array_map('trim', explode(',', strtolower((string) ($wf['alertEmails'] ?? ''))));
-        $admin = strtolower((string) ($f['admin_email'] ?? ''));
-        $cmp(
-            'Wordfence alertEmails includes admin_email',
-            $admin !== '' && in_array($admin, $emails, true),
-            $emails === [''] ? 'alertEmails is empty: no alert reaches anyone' : 'admin_email is not in alertEmails',
-        );
+        $alertAddress = pkde_alert_address((string) ($f['alert_email_const'] ?? ''), (string) ($f['wp_admin_email'] ?? ''));
+        if ($alertAddress !== '') {
+            // The .env names the alert address (WP-87): Wordfence's recipients are exactly it. No address is printed.
+            $cmp(
+                'Wordfence alertEmails is exactly the alert address (WORDFENCE_ALERT_EMAIL, else WP_ADMIN_EMAIL)',
+                pkde_alert_emails_exact((string) ($wf['alertEmails'] ?? ''), $alertAddress),
+                'alertEmails differs from the alert address in .env: the next release sets it (bin/deploy/wordfence-standard.php), or run that file with wp eval-file',
+            );
+        } else {
+            $emails = array_map('trim', explode(',', strtolower((string) ($wf['alertEmails'] ?? ''))));
+            $admin = strtolower((string) ($f['admin_email'] ?? ''));
+            $cmp(
+                'Wordfence alertEmails includes admin_email',
+                $admin !== '' && in_array($admin, $emails, true),
+                $emails === [''] ? 'alertEmails is empty: no alert reaches anyone' : 'admin_email is not in alertEmails',
+            );
+        }
     }
 
     // W3 Total Cache (the standard in bin/deploy/w3tc-standard.php, written by bin/deploy/w3tc-settings.php)
@@ -298,6 +309,9 @@ function pkde_drift_evaluate(array $f): array
     }
 
     // Site identity
+    if (trim((string) ($f['wp_admin_email'] ?? '')) !== '') {
+        $cmp('admin_email equals WP_ADMIN_EMAIL (.env)', strcasecmp(trim((string) ($f['admin_email'] ?? '')), trim((string) $f['wp_admin_email'])) === 0, 'admin_email differs from WP_ADMIN_EMAIL in .env (addresses are not printed here): wp option update admin_email "<the .env value>"', true);
+    }
     $cmp('admin_email is not a placeholder', ! pkde_drift_is_placeholder_email((string) ($f['admin_email'] ?? '')), 'admin_email is empty or a placeholder domain', true);
     $desc = trim((string) ($f['blogdescription'] ?? ''));
     $cmp('blogdescription is set and not the WordPress default', $desc !== '' && stripos($desc, 'just another wordpress') === false, $desc === '' ? 'empty' : 'still the default tagline', true);
@@ -440,6 +454,8 @@ function pkde_drift_collect(): array
         'disallow_indexing' => defined('DISALLOW_INDEXING') && DISALLOW_INDEXING,
         'staging_mail_to' => $const('STAGING_MAIL_TO') !== '' || trim((string) getenv('STAGING_MAIL_TO')) !== '',
         'admin_email' => (string) get_option('admin_email'),
+        'wp_admin_email' => $const('WP_ADMIN_EMAIL'),
+        'alert_email_const' => $const('WORDFENCE_ALERT_EMAIL'),
         'blogname' => (string) get_option('blogname'),
         'blogdescription' => (string) get_option('blogdescription'),
         'wordfence' => $wf,

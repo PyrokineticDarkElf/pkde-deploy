@@ -75,6 +75,8 @@ required=(
     bin/deploy/drift-check.php
     bin/deploy/w3tc-standard.php
     bin/deploy/w3tc-settings.php
+    bin/deploy/alert-email.php
+    bin/deploy/wordfence-standard.php
     bin/deploy/perf-probe.php
     bin/deploy/perf-probe.sh
     bin/deploy/wp.sh

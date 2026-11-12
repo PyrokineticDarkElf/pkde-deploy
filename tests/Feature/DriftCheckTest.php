@@ -461,3 +461,51 @@ it('rejects the CF7 sample names', function () {
         ->and(pkde_drift_form_name_ok('Park home enquiry'))->toBeTrue()
         ->and(pkde_drift_form_name_ok('Contact form'))->toBeTrue();
 });
+
+it('picks the alert address: WORDFENCE_ALERT_EMAIL, else WP_ADMIN_EMAIL, and ignores anything that is not an address', function () {
+    expect(pkde_alert_address('alerts@acme-widgets.co.uk', 'office@acme-widgets.co.uk'))->toBe('alerts@acme-widgets.co.uk')
+        ->and(pkde_alert_address('', 'office@acme-widgets.co.uk'))->toBe('office@acme-widgets.co.uk')
+        ->and(pkde_alert_address('not an address', ' office@acme-widgets.co.uk '))->toBe('office@acme-widgets.co.uk')
+        ->and(pkde_alert_address('', ''))->toBe('')
+        ->and(pkde_alert_address('x', 'y'))->toBe('');
+});
+
+it('compares Wordfence alertEmails with the one address exactly, ignoring case and spaces', function () {
+    expect(pkde_alert_emails_exact('Office@Acme-Widgets.co.uk', 'office@acme-widgets.co.uk'))->toBeTrue()
+        ->and(pkde_alert_emails_exact(' office@acme-widgets.co.uk ,', 'office@acme-widgets.co.uk'))->toBeTrue()
+        ->and(pkde_alert_emails_exact('office@acme-widgets.co.uk, other@x.test', 'office@acme-widgets.co.uk'))->toBeFalse()
+        ->and(pkde_alert_emails_exact('', 'office@acme-widgets.co.uk'))->toBeFalse()
+        ->and(pkde_alert_emails_exact('office@acme-widgets.co.uk', ''))->toBeFalse();
+});
+
+it('keeps the old alertEmails row until the .env names an address, then checks for exactly that address', function () {
+    $facts = pkdeGoodFacts();
+    expect(pkdeStatuses($facts))->toHaveKey('Wordfence alertEmails includes admin_email');
+
+    $facts['wp_admin_email'] = 'office@acme-widgets.co.uk';
+    $exact = 'Wordfence alertEmails is exactly the alert address (WORDFENCE_ALERT_EMAIL, else WP_ADMIN_EMAIL)';
+    $statuses = pkdeStatuses($facts);
+    expect($statuses)->not->toHaveKey('Wordfence alertEmails includes admin_email')
+        ->and($statuses[$exact])->toBe('PASS')
+        ->and($statuses['admin_email equals WP_ADMIN_EMAIL (.env)'])->toBe('PASS');
+
+    $facts['wordfence']['alertEmails'] = 'office@acme-widgets.co.uk, someone@else.test';
+    expect(pkdeStatuses($facts)[$exact])->toBe('FAIL');
+
+    // a separate alert address: the recipients must be that one, not the admin email
+    $facts['alert_email_const'] = 'alerts@acme-widgets.co.uk';
+    $facts['wordfence']['alertEmails'] = 'office@acme-widgets.co.uk';
+    expect(pkdeStatuses($facts)[$exact])->toBe('FAIL');
+    $facts['wordfence']['alertEmails'] = 'alerts@acme-widgets.co.uk';
+    expect(pkdeStatuses($facts)[$exact])->toBe('PASS');
+});
+
+it('fails admin_email when it differs from WP_ADMIN_EMAIL and never prints either address', function () {
+    $facts = pkdeGoodFacts();
+    $facts['wp_admin_email'] = 'owner@acme-widgets.co.uk';
+    $row = array_values(array_filter(pkde_drift_evaluate($facts), fn($r) => $r[1] === 'admin_email equals WP_ADMIN_EMAIL (.env)'))[0];
+
+    expect($row[0])->toBe('FAIL')
+        ->and(json_encode($row))->not->toContain('owner@acme-widgets.co.uk')
+        ->and(json_encode($row))->not->toContain('office@acme-widgets.co.uk');
+});

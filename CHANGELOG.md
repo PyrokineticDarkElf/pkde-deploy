@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026.11.12.2
+
+The site's `.env` in 1Password (WP-87, owner go 2026-11-12), part 1: the tools and the server-side checks. **Adopt:** bump the package and the workflow tag. Nothing changes on a site until its `.env` sets `WP_ADMIN_EMAIL` (and optionally `WORDFENCE_ALERT_EMAIL`) and, for the tools, until the owner has created the vault and seeded the note.
+
+- **`env-pull.sh <host> --env staging|prod --vault ...`.** Brings the server's `shared/.env` in line with the SECURE_NOTE `<host> .env` (one field per variable, label = the variable name, value = the literal right-hand side of the line). A dry run unless `--apply`; `--check` changes nothing and exits 1 when they differ (it also names variables in `.env.example` that the note lacks). It refuses, writing nothing, when a required variable (WP_ENV, WP_HOME, WP_SITEURL, DB_*, the eight salts) is empty or missing in the note or a value spans lines; it adds and changes, and removes a server-only variable only with `--prune`. `--apply` keeps `.env.bak-<time>`, writes with umask 077 through an atomic move, then requests `WP_HOME` and prints the rollback command when it answers 5xx. Production also needs `--production-go`. Values are never printed or put on a command line (`op` to this process to ssh stdin); output is variable names only.
+- **`env-seed.sh <host> --env ... --vault ...`.** Creates that note once from the server's `.env` (a 1Password write, run in a terminal; `--dry-run` prints names only); refuses an item that already exists.
+- **Release step `wordfence-standard.php`** (run by `activate-release.sh`, shipped in every release): Wordfence `alertEmails` = exactly the alert address, `WORDFENCE_ALERT_EMAIL` else `WP_ADMIN_EMAIL`. A site that sets neither, or has no Wordfence, is left alone. The address is never printed.
+- **Drift rows (only once `WP_ADMIN_EMAIL` or `WORDFENCE_ALERT_EMAIL` is set):** "admin_email equals WP_ADMIN_EMAIL (.env)" (no address printed) and "Wordfence alertEmails is exactly the alert address" in place of "includes admin_email". Without those variables the old row stays.
+
 ## 2026.11.12.1
 
 Owner standard for contact forms (manager WP-83, 2026-11-12). **Adopt:** bump the package and the workflow tag; read the drift check; fix each FAIL on the site's own forms (staging first).

@@ -554,6 +554,12 @@ if [ -f "$WP_CLI" ]; then
     run_wp cache flush
     run_wp rewrite flush
 
+    # Wordfence's alert recipients are exactly the alert address from .env (WORDFENCE_ALERT_EMAIL, else WP_ADMIN_EMAIL; WP-87). It changes nothing on a site
+    # that sets neither, or without Wordfence. Warn-only like every step here.
+    if [ -f "$RELEASE_DIR/bin/deploy/wordfence-standard.php" ]; then
+        run_wp eval-file bin/deploy/wordfence-standard.php
+    fi
+
     # Acorn's own caches (config, events, views) for the new release, when the theme has Acorn: its WP-CLI command exists only then.
     if wp_run cli has-command acorn >/dev/null 2>&1; then
         run_wp acorn optimize
