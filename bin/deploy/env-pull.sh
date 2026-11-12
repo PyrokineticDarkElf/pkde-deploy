@@ -3,11 +3,11 @@
 # Brings a site's server .env in line with its 1Password secure note (WP-87). A DRY RUN unless --apply: it lists variable NAMES only (never a value) and writes nothing.
 #
 #   env-pull.sh <host> --env staging|prod --vault "<vault>" [--account <account>] [--example .env.example]            dry run
-#   env-pull.sh <host> --env staging|prod --vault "<vault>" --check                                                  changes nothing; exit 1 if the server and the note differ
+#   env-pull.sh <host> --env staging|prod --vault "<vault>" --check                                                  changes nothing; exit 1 if the server and the note differ (names only in .env.example are INFO)
 #   env-pull.sh <host> --env staging|prod --vault "<vault>" --apply [--prune] [--production-go]                       writes the server's shared/.env
 #
 # The note is "<host> .env" (override with --item): a SECURE_NOTE, one field per variable, label = the variable name, value = the literal right-hand side of the
-# .env line. Create it with env-seed.sh. Run it from the site's repository so .env.example is found (the check names variables the note lacks).
+# .env line. Create it with env-seed.sh. Run it from the site's repository so .env.example is found (it lists variables the note lacks as INFO).
 #
 # Connects like the other deploy scripts, from the same names as the GitHub secrets exported in your shell: PROD_SSH_HOST, PROD_SSH_PORT, PROD_SSH_USER and
 # PROD_DEPLOY_PATH (staging: STAGING_*). One ssh ControlMaster is reused; PKDE_SSH_OPTS adds options (for example -i <pub> -o IdentitiesOnly=yes).

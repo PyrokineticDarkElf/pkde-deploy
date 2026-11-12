@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **`env-pull.sh --check` compares the note with the server only** (mds pilot, WP-87). Variables that `.env.example` has and the note lacks are listed as `INFO` and no longer make `--check` say DIFFERS or exit 1.
+
 ## 2026.11.12.5
 
 WP-84 bug, second data point (jsd staging: two sessions closed by the host at `wp.sh option update admin_email <address>` with the output piped through sed; the same change as `update_option()` in an eval-file, script written to the home directory and output sent to a file, worked). **Adopt:** bump the package and the workflow tag (with 2026.11.12.4).

@@ -9,7 +9,7 @@ Rules (all of them are about not breaking a live site or leaking a value):
   * Values are never printed, never put on a command line, never written to disk here. They travel op -> this process -> ssh stdin (pull) or
     ssh stdout -> this process -> op stdin (seed). Output names variables only.
   * pull is a DRY RUN unless --apply. It refuses (nothing written) when a required variable (database, URLs, salts) is empty or missing in the note, or a value
-    spans lines. It adds and changes; it removes a server variable only with --prune. --check changes nothing and exits 1 on any difference.
+    spans lines. It adds and changes; it removes a server variable only with --prune. --check changes nothing and exits 1 when the server and the note differ (variables only in .env.example are listed as INFO and do not count).
   * --apply keeps the previous file as .env.bak-<time>, writes a new one with umask 077 and moves it into place, then requests WP_HOME: a 5xx or no answer
     is reported with the one-line rollback. Production needs --production-go on top (the owner's go is a human step, this is only the speed bump).
 """
@@ -186,8 +186,8 @@ def pull(args):
     names('to change', d['changed'])
     names('to remove (--prune)', d['removed'])
     names('on the server only, kept (use --prune to remove)', d['kept'])
-    names('in .env.example but missing from the note', not_in_note)
-    differs = bool(d['added'] or d['changed'] or d['removed'] or d['kept'] or not_in_note)
+    names('INFO: in .env.example but not in the note (not a difference: a site need not use every example variable)', not_in_note)
+    differs = bool(d['added'] or d['changed'] or d['removed'] or d['kept'])
 
     if args.check:
         print('DIFFERS' if differs else 'MATCHES')

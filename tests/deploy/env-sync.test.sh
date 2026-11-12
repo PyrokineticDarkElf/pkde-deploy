@@ -137,10 +137,10 @@ out="$("$PULL" "${ARGS[@]}" --check 2>&1)"; rc=$?
 has "check says MATCHES" "$out" "MATCHES"; check "check matches: exit 0" "$rc" "0"
 out="$("$PULL" "${ARGS[@]}" --apply 2>&1)"; has "second apply writes nothing" "$out" "Nothing to write"
 
-# 7. a variable in .env.example but not in the note is reported
+# 7. a variable in .env.example but not in the note is listed as INFO and is not a difference
 printf 'MISSING_ONE=\n' >> "$T/example"
 out="$("$PULL" "${ARGS[@]}" --check 2>&1)"; rc=$?
-has "reports a variable the note lacks" "$out" "in .env.example but missing from the note (1): MISSING_ONE"; check "that makes check fail" "$rc" "1"
+has "reports a variable the note lacks as INFO" "$out" "INFO: in .env.example but not in the note"; has "names it" "$out" "(1): MISSING_ONE"; has "still says MATCHES" "$out" "MATCHES"; check "an example-only variable does not make check fail" "$rc" "0"
 
 # 8. a multi-line value is refused
 python3 - "$T" <<'PY'
