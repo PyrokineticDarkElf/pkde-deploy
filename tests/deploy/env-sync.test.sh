@@ -69,7 +69,7 @@ import json, sys
 t, salt, dbpw, smtp = sys.argv[1:]
 f = lambda k, v, s='Other': {'id': k, 'label': k, 'type': 'CONCEALED', 'value': v, 'section': {'id': 's', 'label': s}}
 fields = [f('DB_NAME', 'wp'), f('DB_USER', 'wpuser'), f('DB_PASSWORD', dbpw), f('DB_HOST', 'localhost'), f('WP_ENV', 'staging'),
-          f('WP_HOME', 'http://localhost'), f('WP_SITEURL', '"${WP_HOME}/wp"'), f('SMTP_PASSWORD', smtp)]
+          f('WP_HOME', 'http://localhost'), f('WP_SITEURL', '"${WP_HOME}/wp"'), f('SMTP_PASSWORD', smtp), f('WP_ADMIN_EMAIL', 'canary@acme-widgets.co.uk'), f('WORDFENCE_ALERT_EMAIL', '')]
 fields += [f(k, "'" + salt + "'") for k in ['AUTH_KEY', 'SECURE_AUTH_KEY', 'LOGGED_IN_KEY', 'NONCE_KEY', 'AUTH_SALT', 'SECURE_AUTH_SALT', 'LOGGED_IN_SALT', 'NONCE_SALT']]
 fields.append({'id': 'notesPlain', 'label': 'notesPlain', 'type': 'STRING', 'value': 'ignore me'})
 json.dump({'title': 'site.test .env', 'fields': fields}, open(t + '/item.json', 'w'))
@@ -82,7 +82,7 @@ ARGS=(site.test --env staging --vault V --account A --example "$T/example")
 out="$("$PULL" "${ARGS[@]}" 2>&1)"; rc=$?
 check "dry run exit" "$rc" "0"
 has "dry run lists the change" "$out" "to change (1): DB_PASSWORD"
-has "dry run lists the addition" "$out" "to add (1): SMTP_PASSWORD"
+has "dry run lists the additions" "$out" "to add (3): SMTP_PASSWORD, WP_ADMIN_EMAIL, WORDFENCE_ALERT_EMAIL"
 has "dry run keeps server-only" "$out" "on the server only, kept (use --prune to remove) (1): SERVER_ONLY"
 has "dry run says nothing was written" "$out" "Dry run: nothing was written"
 check "dry run left the file alone" "$(cat "$SRV")" "$before"
@@ -121,6 +121,9 @@ check "apply exit" "$rc" "0"
 has "apply says written" "$out" "Written. The previous file is"
 has "changed value written" "$(cat "$SRV")" "DB_PASSWORD=$DBPW"
 has "added variable appended" "$(cat "$SRV")" "SMTP_PASSWORD=$SMTP"
+has "an empty WORDFENCE_ALERT_EMAIL is written as an empty line, not refused" "$(cat "$SRV")" "WORDFENCE_ALERT_EMAIL="
+check "the empty alert variable is on its own line" "$(grep -c '^WORDFENCE_ALERT_EMAIL=$' "$SRV")" "1"
+lacks "apply does not print the address" "$out" "canary@acme-widgets.co.uk"
 has "interpolation kept verbatim" "$(cat "$SRV")" 'WP_SITEURL="${WP_HOME}/wp"'
 has "server-only variable kept" "$(cat "$SRV")" "SERVER_ONLY=keepme"
 has "comment kept" "$(cat "$SRV")" "# server file"
@@ -169,8 +172,20 @@ for canary in "$SALT" "$DBPW" "$SMTP"; do lacks "seed output has no value ($cana
 cp "$T/created.json" "$T/item.json"
 "$SEED" "${ARGS[@]}" >/dev/null 2>&1; check "seed refuses an existing item" "$?" "1"
 
-# 10. a missing ssh name is a usage error
-(unset STAGING_SSH_HOST; "$PULL" "${ARGS[@]}" >/dev/null 2>&1; check "missing STAGING_SSH_HOST" "$?" "2")
+# 10. seed on a server file without the two address variables still creates both, empty and concealed, in "WP Admin", with the notes line
+printf 'DB_NAME=wp\nWP_ENV=staging\n' > "$SRV"; rm -f "$T/item.json" "$T/created.json"
+"$SEED" "${ARGS[@]}" >/dev/null 2>&1; check "seed without the address variables: exit" "$?" "0"
+addr="$(python3 - "$T/created.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1])); f = {x['label']: x for x in d['fields']}
+ok = all(k in f and f[k]['value'] == '' and f[k]['type'] == 'CONCEALED' and f[k]['section']['label'] == 'WP Admin' for k in ('WP_ADMIN_EMAIL', 'WORDFENCE_ALERT_EMAIL'))
+print('fields-ok' if ok else 'fields-bad', 'notes-ok' if 'WORDFENCE_ALERT_EMAIL empty = Wordfence alerts go to WP_ADMIN_EMAIL' in f['notesPlain']['value'] else 'notes-bad')
+PY
+)"
+check "seed always creates both address fields (empty, concealed, WP Admin) and the notes line" "$addr" "fields-ok notes-ok"
+
+# 11. a missing ssh name is a usage error
+rm -f "$T/item.json"; (unset STAGING_SSH_HOST; "$SEED" "${ARGS[@]}" >/dev/null 2>&1; check "missing STAGING_SSH_HOST" "$?" "2")
 
 echo "env-sync: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

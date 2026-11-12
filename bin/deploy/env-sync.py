@@ -25,6 +25,8 @@ import urllib.request
 
 REQUIRED = ['WP_ENV', 'WP_HOME', 'WP_SITEURL', 'DB_NAME', 'DB_USER', 'DB_PASSWORD', 'DB_HOST',
             'AUTH_KEY', 'SECURE_AUTH_KEY', 'LOGGED_IN_KEY', 'NONCE_KEY', 'AUTH_SALT', 'SECURE_AUTH_SALT', 'LOGGED_IN_SALT', 'NONCE_SALT']
+ADDRESS_FIELDS = ['WP_ADMIN_EMAIL', 'WORDFENCE_ALERT_EMAIL']
+ADDRESS_SECTION = 'WP Admin'
 LINE_RE = re.compile(r'^(export\s+)?([A-Z][A-Z0-9_]*)=(.*)$')
 KEY_RE = re.compile(r'^[A-Z][A-Z0-9_]*$')
 SAFE_PATH = re.compile(r'^[A-Za-z0-9_./~-]+$')
@@ -242,6 +244,10 @@ def seed(args):
         die('the server .env has no variables')
     sections = example_sections(read_example(args))
     section_ids, fields, values = {}, [], dict(pairs)
+    # The two address variables are always in the note, in "WP Admin", empty where the server has none: the empty alert field documents the option.
+    for key in ADDRESS_FIELDS:
+        values.setdefault(key, '')
+        sections[key] = ADDRESS_SECTION
     for key, rhs in values.items():
         label = sections.get(key, 'Other')
         sid = section_ids.setdefault(label, f's{len(section_ids) + 1}')
@@ -252,7 +258,7 @@ def seed(args):
         'tags': ['wordpress', 'env', args.host, 'staging' if args.env == 'staging' else 'production'],
         'sections': [{'id': sid, 'label': label} for label, sid in section_ids.items()],
         'fields': [{'id': 'notesPlain', 'type': 'STRING', 'purpose': 'NOTES', 'label': 'notesPlain',
-                    'value': 'Created from the server .env by env-seed.sh. Edit the fields here, then run env-pull.sh. One field per variable; the value is the literal right-hand side of the .env line.'}] + fields,
+                    'value': 'Created from the server .env by env-seed.sh. Edit the fields here, then run env-pull.sh. One field per variable; the value is the literal right-hand side of the .env line.\nWORDFENCE_ALERT_EMAIL empty = Wordfence alerts go to WP_ADMIN_EMAIL'}] + fields,
     }
     print(f'{title}: {len(fields)} variables in {len(section_ids)} sections: {", ".join(section_ids)}')
     names('required and empty on the server', [k for k in REQUIRED if values.get(k, '') == ''])

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **`env-seed.sh` always creates `WP_ADMIN_EMAIL` and `WORDFENCE_ALERT_EMAIL`** (section "WP Admin", CONCEALED), empty when the server `.env` lacks them, so the empty alert field documents the option. The note's own notes carry the line "WORDFENCE_ALERT_EMAIL empty = Wordfence alerts go to WP_ADMIN_EMAIL". `env-pull.sh` treats an empty `WORDFENCE_ALERT_EMAIL` (or `WP_ADMIN_EMAIL`) as unset: neither is a required variable, so it writes `WORDFENCE_ALERT_EMAIL=` and does not refuse (tested).
+
 - **`env-pull.sh --check` compares the note with the server only** (mds pilot, WP-87). Variables that `.env.example` has and the note lacks are listed as `INFO` and no longer make `--check` say DIFFERS or exit 1.
 
 ## 2026.11.12.5
