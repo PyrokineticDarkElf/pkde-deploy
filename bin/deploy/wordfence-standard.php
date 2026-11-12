@@ -10,8 +10,8 @@
 require_once __DIR__ . '/alert-email.php';
 
 $address = pkde_alert_address(
-    defined('WORDFENCE_ALERT_EMAIL') ? (string) WORDFENCE_ALERT_EMAIL : '',
-    defined('WP_ADMIN_EMAIL') ? (string) WP_ADMIN_EMAIL : '',
+    pkde_env_setting('WORDFENCE_ALERT_EMAIL'),
+    pkde_env_setting('WP_ADMIN_EMAIL'),
 );
 
 if ($address === '') {

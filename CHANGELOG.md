@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026.11.12.3
+
+WP-87 follow-up. **Adopt:** bump the package and the workflow tag (with 2026.11.12.2).
+
+- **`WP_ADMIN_EMAIL` and `WORDFENCE_ALERT_EMAIL` are read from the `.env` when the site has no `Config::define` lines for them** (the constant wins, then Bedrock's `env()`, then `getenv()`), by the release step and the drift rows. A site that set the variables in its `.env` but has not ported the template's `config/application.php` block is therefore checked, not silently skipped.
+
 ## 2026.11.12.2
 
 The site's `.env` in 1Password (WP-87, owner go 2026-11-12), part 1: the tools and the server-side checks. **Adopt:** bump the package and the workflow tag. Nothing changes on a site until its `.env` sets `WP_ADMIN_EMAIL` (and optionally `WORDFENCE_ALERT_EMAIL`) and, for the tools, until the owner has created the vault and seeded the note.
