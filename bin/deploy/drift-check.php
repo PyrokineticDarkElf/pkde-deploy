@@ -22,6 +22,20 @@ require_once __DIR__ . '/w3tc-standard.php';
 
 const PKDE_DRIFT_SUBJECT = 'New website enquiry - [_site_title] - [your-name]';
 
+/** Does a CF7 mail's Additional headers Cc the site admin through the special tag (no address stored in the form)? */
+function pkde_drift_cc_admin_ok(string $headers): bool
+{
+    return preg_match('/^\s*Cc:[^\r\n]*\[_site_admin_email\]/mi', $headers) === 1;
+}
+
+/** Is a CF7 form name descriptive (not CF7's own "Contact form 1" or "Untitled")? */
+function pkde_drift_form_name_ok(string $title): bool
+{
+    $title = trim($title);
+
+    return $title !== '' && preg_match('/^(contact form \d+|untitled)$/i', $title) !== 1;
+}
+
 /**
  * Is a CF7 mail subject the fixed standard? Fixed prefix "New website enquiry - ", then [_site_title] or the literal site name,
  * then " - [your-name]", then optionally one more " - [mail-tag]" (a form that also names the page or listing it came from).
@@ -275,6 +289,8 @@ function pkde_drift_evaluate(array $f): array
     foreach ($f['cf7_forms'] ?? [] as $form) {
         $label = 'CF7 form #' . (int) ($form['id'] ?? 0);
         $cmp("$label has no visitor Subject field", empty($form['has_subject']), 'form still has a your-subject field');
+        $cmp("$label has a descriptive name", pkde_drift_form_name_ok((string) ($form['title'] ?? '')), 'named "' . (string) ($form['title'] ?? '') . '": give it a name that says what it is, such as "Contact form" or "Park home enquiry"');
+        $cmp("$label Mail Ccs the admin (Cc: [_site_admin_email])", pkde_drift_cc_admin_ok((string) ($form['headers'] ?? '')), 'the Mail tab\'s Additional headers has no "Cc: [_site_admin_email]" line');
         $cmp("$label mail subject is the fixed text", pkde_drift_subject_ok((string) ($form['subject'] ?? ''), (string) ($f['blogname'] ?? '')), 'got "' . (string) ($form['subject'] ?? '') . '"');
         if (! empty($form['mail2_active'])) {
             $cmp("$label Mail (2) subject is the fixed text", pkde_drift_subject_ok((string) ($form['mail2_subject'] ?? ''), (string) ($f['blogname'] ?? '')), 'got "' . (string) ($form['mail2_subject'] ?? '') . '"');
@@ -374,6 +390,8 @@ function pkde_drift_collect(): array
             $mail2 = (array) get_post_meta($p->ID, '_mail_2', true);
             $forms[] = [
                 'id' => $p->ID,
+                'title' => (string) $p->post_title,
+                'headers' => (string) ($mail['additional_headers'] ?? ''),
                 'has_subject' => strpos((string) get_post_meta($p->ID, '_form', true), 'your-subject') !== false,
                 'subject' => (string) ($mail['subject'] ?? ''),
                 'mail2_active' => ! empty($mail2['active']),

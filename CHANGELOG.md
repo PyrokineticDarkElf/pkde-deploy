@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026.11.12.1
+
+Owner standard for contact forms (manager WP-83, 2026-11-12). **Adopt:** bump the package and the workflow tag; read the drift check; fix each FAIL on the site's own forms (staging first).
+
+- **Two drift rows per Contact Form 7 form.** "CF7 form #N has a descriptive name": FAIL while the form is still called CF7's own "Contact form 1" (or "Untitled"); name it for what it is, for example "Contact form" or "Park home enquiry" (shortcodes resolve by id or hash, so renaming is safe). "CF7 form #N Mail Ccs the admin (Cc: [_site_admin_email])": FAIL unless the Mail tab's Additional headers has a `Cc:` line with the `[_site_admin_email]` special tag, so no address is stored in the form and the Cc follows `admin_email`. Mail (2), the visitor's auto-reply, is not checked and should not Cc. Facts: `title` and `headers` per form; pure checks `pkde_drift_form_name_ok()` and `pkde_drift_cc_admin_ok()`.
+
 ## 2026.11.12
 
 From the manager (WP-84, owner 2026-11-12: Wordfence Diagnostics shows REMOTE_ADDR as the visitor, so it stays). **Adopt:** bump the package and the workflow tag, then run `vendor/pkde/deploy/bin/deploy/wordfence-cloudflare.sh staging` (and `production` in the go session).
