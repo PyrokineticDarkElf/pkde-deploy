@@ -78,6 +78,7 @@ required=(
     bin/deploy/alert-email.php
     bin/deploy/wordfence-standard.php
     bin/deploy/wfconfig-sql.php
+    bin/deploy/waf-prepend.sh
     bin/deploy/perf-probe.php
     bin/deploy/perf-probe.sh
     bin/deploy/wp.sh

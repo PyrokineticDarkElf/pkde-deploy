@@ -260,6 +260,12 @@ function pkde_drift_evaluate(array $f): array
 
     // Relevanssi (the shop's search, TPL-133): installed but never indexed, it answers every search with nothing. settings script: the kit's
     // bin/relevanssi-settings.php rebuilds the index. Only while the plugin is active; the fact is the number of rows in its index table.
+    // Wordfence Extended Protection (WP-85), only for a site that opted in with WORDFENCE_EXTENDED_PROTECTION=1: web/.user.ini must point at the shim in shared/waf
+    if (is_array($f['waf_prepend'] ?? null) && ! empty($f['waf_prepend']['enabled']) && ! $wfOffOnStaging) {
+        $wp = $f['waf_prepend'];
+        $cmp('Wordfence Extended Protection: web/.user.ini points at the shared shim', ! empty($wp['ini_target']) && ! empty($wp['target_exists']) && ! empty($wp['target_has_bootstrap']), ! empty($wp['ini_target']) ? 'the auto_prepend_file target is missing or does not load the Wordfence bootstrap: run bin/deploy/waf-prepend.sh (a release does it)' : 'web/.user.ini has no auto_prepend_file line: the next release writes it (bin/deploy/waf-prepend.sh), or the site is not on 2026.11.13.4 or later');
+    }
+
     // REST users (WP-88): an anonymous GET of the user routes must not list anybody (401, 403 or 404; the platform module rest-users-private answers 404 in every environment)
     if (is_array($f['rest_users'] ?? null)) {
         foreach (['list' => '/wp/v2/users', 'single' => '/wp/v2/users/<id>'] as $key => $route) {
@@ -409,6 +415,29 @@ function pkde_drift_relevanssi_indexed(): int
     return (int) $wpdb->get_var("SELECT COUNT(*) FROM `$table`");
 }
 
+/** Extended Protection facts: opted in (WORDFENCE_EXTENDED_PROTECTION in .env), the auto_prepend_file target in the docroot's .user.ini, and whether that file exists and includes the bootstrap. Paths are not printed. */
+function pkde_drift_waf_prepend_facts(): array
+{
+    $flag = strtolower(trim(pkde_env_setting('WORDFENCE_EXTENDED_PROTECTION')));
+    $facts = ['enabled' => in_array($flag, ['1', 'true', 'yes', 'on'], true), 'ini_target' => null, 'target_exists' => false, 'target_has_bootstrap' => false];
+
+    if (! $facts['enabled']) {
+        return $facts;
+    }
+
+    foreach ([dirname(rtrim(ABSPATH, '/')), rtrim(ABSPATH, '/')] as $dir) {
+        $ini = $dir . '/.user.ini';
+        if (is_readable($ini) && preg_match("/^\\s*auto_prepend_file\\s*=\\s*'([^']+)'/m", (string) file_get_contents($ini), $m)) {
+            $facts['ini_target'] = $m[1];
+            $facts['target_exists'] = is_file($m[1]);
+            $facts['target_has_bootstrap'] = $facts['target_exists'] && str_contains((string) file_get_contents($m[1]), 'wordfence/waf/bootstrap.php');
+            break;
+        }
+    }
+
+    return $facts;
+}
+
 /** An anonymous request to the user routes, dispatched inside WordPress (so staging's Basic auth and a firewall do not matter): the status codes only. */
 function pkde_drift_rest_users_probe(): array
 {
@@ -540,6 +569,7 @@ function pkde_drift_collect(): array
         'relevanssi_indexed' => in_array('relevanssi', $active, true) ? pkde_drift_relevanssi_indexed() : null,
         'author_archive' => pkde_drift_author_archive(),
         'rest_users' => pkde_drift_rest_users_probe(),
+        'waf_prepend' => pkde_drift_waf_prepend_facts(),
         'woocommerce_active' => in_array('woocommerce', $active, true),
         'breadcrumbs' => pkde_drift_breadcrumb_facts(),
         'cache_basket_visitors' => pkde_w3tc_cache_basket_visitors(),

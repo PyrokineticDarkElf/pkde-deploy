@@ -150,6 +150,13 @@ seed_shared_dir languages
 rm -f "$RELEASE_DIR/.env"
 ln -s "$SHARED_DIR/.env" "$RELEASE_DIR/.env"
 
+# Wordfence Extended Protection (WP-85), only when shared/.env has WORDFENCE_EXTENDED_PROTECTION=1: the firewall's prepend file lives in shared/waf at a path that
+# never changes and this release's web/.user.ini points at it (Wordfence's own installer writes both into the release, where the next release prunes them).
+# A failure here never stops the activation: the firewall then runs as the plugin's normal mode.
+if [ -f "$RELEASE_DIR/bin/deploy/waf-prepend.sh" ]; then
+    bash "$RELEASE_DIR/bin/deploy/waf-prepend.sh" "$RELEASE_DIR" "$SHARED_DIR" "$CURRENT_LINK" || echo "WARN: bin/deploy/waf-prepend.sh failed; the firewall runs in its standard mode" >&2
+fi
+
 rm -rf "$RELEASE_DIR/web/app/uploads"
 ln -s "$SHARED_DIR/uploads" "$RELEASE_DIR/web/app/uploads"
 

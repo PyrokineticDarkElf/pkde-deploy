@@ -557,3 +557,21 @@ it('accepts 401, 403 and 404 for the anonymous user routes and skips a probe it 
     $facts['rest_users'] = ['list' => 404, 'single' => null];
     expect(pkdeStatuses($facts))->not->toHaveKey('Anonymous GET /wp/v2/users/<id> does not list users (401, 403 or 404)');
 });
+
+it('checks Wordfence Extended Protection only for a site that opted in, and fails a dangling or missing prepend target', function () {
+    $facts = pkdeGoodFacts();
+    $row = 'Wordfence Extended Protection: web/.user.ini points at the shared shim';
+    expect(pkdeStatuses($facts))->not->toHaveKey($row);
+
+    $facts['waf_prepend'] = ['enabled' => false, 'ini_target' => null, 'target_exists' => false, 'target_has_bootstrap' => false];
+    expect(pkdeStatuses($facts))->not->toHaveKey($row);
+
+    $facts['waf_prepend'] = ['enabled' => true, 'ini_target' => '/x/waf/wordfence-waf.php', 'target_exists' => true, 'target_has_bootstrap' => true];
+    expect(pkdeStatuses($facts)[$row])->toBe('PASS');
+
+    foreach ([['ini_target', null], ['target_exists', false], ['target_has_bootstrap', false]] as [$key, $value]) {
+        $broken = $facts;
+        $broken['waf_prepend'][$key] = $value;
+        expect(pkdeStatuses($broken)[$row])->toBe('FAIL');
+    }
+});

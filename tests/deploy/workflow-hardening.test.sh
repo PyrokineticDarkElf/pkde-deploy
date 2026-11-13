@@ -19,6 +19,12 @@ for wf in "$REPO_ROOT"/.github/workflows/*.yml; do
   has_perm=$(grep -cE '^permissions:' "$wf"); check "$name: has a top-level permissions block" "$has_perm" 1
 done
 
+# every `docker run` image is pinned by digest (a tag can be moved); the images run in CI before any secret exists, but a moved tag would still run in our pipeline
+unpinned_images=$(grep -hE 'docker run ' "$REPO_ROOT"/.github/workflows/*.yml | grep -vE '@sha256:[0-9a-f]{64}' | wc -l | tr -d ' ')
+check "every docker run image is pinned by digest" "$unpinned_images" 0
+check "a caller can require a pinned host key (no trust on first use)" "$(grep -c 'require-pinned-host-key' "$REPO_ROOT/.github/workflows/deploy.yml" | awk '{print ($1 >= 1) ? "ok" : "missing"}')" ok
+check "...and the deploy step fails without the secret when it does" "$(grep -c 'REQUIRE_PINNED_HOST_KEY' "$REPO_ROOT/.github/workflows/deploy.yml" | awk '{print ($1 >= 2) ? "ok" : "missing"}')" ok
+
 check "the deploy step can pin the host key (PROD and STAGING)" "$(grep -c 'SSH_KNOWN_HOSTS' "$REPO_ROOT/.github/workflows/deploy.yml" | awk '{print ($1 >= 6) ? "ok" : "few"}')" ok
 check "a pinned host key turns StrictHostKeyChecking on" "$(grep -c 'StrictHostKeyChecking=yes' "$REPO_ROOT/.github/workflows/deploy.yml")" 1
 

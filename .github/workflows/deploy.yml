@@ -35,6 +35,10 @@ on:
         description: "Set false to never deploy from this repository (the starter template)."
         type: boolean
         default: true
+      require-pinned-host-key:
+        description: "Set true to refuse to deploy when the <PROD|STAGING>_SSH_KNOWN_HOSTS secret is missing (no trust on first use). Default false so no site breaks on the bump; set it once the secret exists (TPL-129)."
+        type: boolean
+        default: false
       runs-on:
         type: string
         default: ubuntu-26.04
@@ -98,7 +102,7 @@ jobs:
 
       # Lint the caller's workflows. Version pinned; the runner label list of actionlint lags behind GitHub's.
       - name: Lint workflows (actionlint)
-        run: docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:1.7.12 -color
+        run: docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 -color
 
       - name: Set up PHP
         uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962  # v2
@@ -218,6 +222,7 @@ jobs:
           SSH_USER: ${{ secrets[format('{0}_SSH_USER', github.ref == 'refs/heads/main' && 'PROD' || 'STAGING')] }}
           DEPLOY_PATH: ${{ secrets[format('{0}_DEPLOY_PATH', github.ref == 'refs/heads/main' && 'PROD' || 'STAGING')] }}
           SSH_KNOWN_HOSTS: ${{ secrets[format('{0}_SSH_KNOWN_HOSTS', github.ref == 'refs/heads/main' && 'PROD' || 'STAGING')] }}
+          REQUIRE_PINNED_HOST_KEY: ${{ inputs.require-pinned-host-key }}
         run: |
           set -e
           source "$TOOLS/bin/deploy/retry.sh"
@@ -242,6 +247,10 @@ jobs:
             printf '%s\n' "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
             SSH_OPTS+=(-o StrictHostKeyChecking=yes)
           else
+            if [ "${REQUIRE_PINNED_HOST_KEY:-false}" = "true" ]; then
+              echo "::error::No ${GITHUB_REF_NAME} SSH_KNOWN_HOSTS secret and this caller sets require-pinned-host-key: store the output of ssh-keyscan as the secret (bin/deploy/push-gh-secrets.sh does it from the 1Password item)."
+              exit 1
+            fi
             echo "::warning::No ${GITHUB_REF_NAME} SSH_KNOWN_HOSTS secret: the server's host key is learned by ssh-keyscan on every run (trust on first use). Store its output as the secret to pin it."
             # shellcheck disable=SC2016
             retry "ssh-keyscan" bash -c 'keys=$(ssh-keyscan -T 20 -p "$1" -H "$2") && [ -n "$keys" ] && echo "$keys" >> ~/.ssh/known_hosts' _ "$SSH_PORT" "$SSH_HOST"

@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026.11.13.4
+
+The TPL-129 second pass (three of the four strongest audit leads, all low severity) and the Wordfence Extended Protection build (WP-85). **Adopt:** bump the package and the workflow tag. Nothing changes for a site until it opts in (below); a caller that has the `SSH_KNOWN_HOSTS` secrets can set `require-pinned-host-key: true`.
+
+- **Docker images in the workflows are pinned by digest** (`rhysd/actionlint`, `zricethezav/gitleaks`: tag kept, `@sha256:` added); `tests/deploy/workflow-hardening.test.sh` fails any `docker run` image without a digest. The local-development images (compose, Dockerfiles) are not pinned on purpose. Renovate does not see images inside `run:` steps, so bumps are by hand.
+- **`require-pinned-host-key` input on `deploy.yml` (default false).** When true, the deploy step fails instead of learning the server's host key with `ssh-keyscan` (trust on first use, repeated on every run because runners are ephemeral) when the `<PROD|STAGING>_SSH_KNOWN_HOSTS` secret is empty. Default false so no site breaks on the bump; sites whose secrets are set should turn it on, and bb, el, js and tcs production need the secret first (`bin/deploy/push-gh-secrets.sh` pushes it from the 1Password item). Verified: a network attacker on the path gains the build artifact and a fake successful deploy, not the deploy key and not code execution on the real server, hence low.
+- **Wordfence Extended Protection (opt-in, `WORDFENCE_EXTENDED_PROTECTION=1` in the server `.env`).** New `bin/deploy/waf-prepend.sh`, run by `activate-release.sh` on every release: a guarded shim at `shared/waf/wordfence-waf.php` (a path that never changes, reaching the plugin through the `current` link) and a `web/.user.ini` with Wordfence's own markers in each new release. Wordfence's own installer writes both inside the release and the path dangles after the next release (Fatal error: Failed opening required on every request). Drift row (opted-in sites): "Wordfence Extended Protection: web/.user.ini points at the shared shim". Proved on the template stack with a real PHP-FPM pool: applied, survives a release switch and a pruned release, harmless when the plugin is gone. See reports/template/2026-11-13-wp-85-wordfence-extended-protection.md.
+- **Not changed (recorded):** `FINGERPRINT_AUTH` is handed to Puppeteer `authenticate()`, which answers any Basic challenge from any origin (never pre-emptively); a scoped version needs request interception, which sends the header pre-emptively and would put the staging credential on production in the compare run. Low severity, left as documented.
+
 ## 2026.11.13.3
 
 REST users closed for anonymous visitors on every site (owner yes, WP-88; needs pkde-platform 2026.11.13.1). **Adopt:** bump pkde/platform to 2026.11.13.1, then the package and the workflow tag to this one.
