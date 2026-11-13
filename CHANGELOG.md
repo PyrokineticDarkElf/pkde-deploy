@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026.11.13.1
+
+Author archive rows, owner decision (WP-88): blog authors who are administrators keep administrator and get the author role added. **Adopt:** bump the package and the workflow tag.
+
+- **"Every user with published posts has an allowed author role" is a FAIL** (it was an INFO): wp-admin's profile form has one role dropdown, so saving the profile of an administrator who also holds `author` silently drops the second role. The role check is the intersection, so administrator plus author passes. The detail names counts only and the cure: `wp user add-role <ID> author`, or `AUTHOR_ARCHIVE_ROLES`.
+- **New FAIL row "Author archive slug (user_nicename) differs from the login"** for users with an allowed role: the archive URL contains the nicename, so a nicename equal to the login gives the login away. Counts only, no names.
+
 ## 2026.11.13
 
 Drift rows for the author archives (WP-88; needs pkde-platform 2026.11.13) and two small env-tool changes from the mds pilot (WP-87). **Adopt:** bump the package and the workflow tag; bump pkde/platform to 2026.11.13 (or the new row FAILs).

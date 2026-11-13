@@ -263,10 +263,12 @@ function pkde_drift_evaluate(array $f): array
         $aa = $f['author_archive'];
         $cmp('Author archives are closed for users without an allowed role (platform module author-archives)', ! empty($aa['module']), 'the pkde-platform module author-archives is not loaded: bump pkde/platform to 2026.11.13 or later');
         $without = (int) ($aa['without_role'] ?? 0);
-        if ($without > 0) {
-            $add('INFO', 'Users with published posts without an allowed author role', $without . ' of ' . (int) ($aa['authors'] ?? 0) . ' users with published posts hold none of (' . implode(', ', (array) ($aa['roles'] ?? [])) . '): their archive is a 404 and their byline links home; give them the role or set AUTHOR_ARCHIVE_ROLES in .env');
-        } else {
-            $add('PASS', 'Users with published posts without an allowed author role', '');
+        // FAIL, not INFO: wp-admin's profile form has ONE role dropdown, so saving the profile of an administrator who was given the author role as a second role
+        // silently drops it. A user with published posts and no allowed role has a 404 archive and a byline that links home.
+        $cmp('Every user with published posts has an allowed author role', $without === 0, $without . ' of ' . (int) ($aa['authors'] ?? 0) . ' users with published posts hold none of (' . implode(', ', (array) ($aa['roles'] ?? [])) . '): add the role without removing theirs (wp user add-role <ID> author), or set AUTHOR_ARCHIVE_ROLES in .env');
+        if (array_key_exists('slug_equals_login', $aa)) {
+            $same = (int) $aa['slug_equals_login'];
+            $cmp('Author archive slug (user_nicename) differs from the login', $same === 0, $same . ' of ' . (int) ($aa['allowed_users'] ?? 0) . ' users with an allowed role have an archive slug equal to their login name (the URL gives the login away): change the nicename (names are not printed here)');
         }
     }
 
@@ -394,7 +396,7 @@ function pkde_drift_relevanssi_indexed(): int
     return (int) $wpdb->get_var("SELECT COUNT(*) FROM `$table`");
 }
 
-/** Author archive facts: is the module loaded, how many users have published posts, how many of them hold no allowed role. Counts only, no names. */
+/** Author archive facts: is the module loaded, how many users have published posts, how many of them hold no allowed role, how many users with an allowed role have a nicename (the archive slug) equal to their login. Counts only, no names. */
 function pkde_drift_author_archive(): array
 {
     $module = function_exists('App\\MuPlugins\\author_has_allowed_role') && function_exists('App\\MuPlugins\\author_archive_allowed_roles');
@@ -409,7 +411,16 @@ function pkde_drift_author_archive(): array
         }
     }
 
-    return ['module' => $module, 'roles' => $roles, 'authors' => count($users), 'without_role' => $without];
+    $allowed = $roles === [] ? [] : get_users(['role__in' => $roles, 'fields' => ['user_login', 'user_nicename']]);
+    $same = 0;
+
+    foreach ($allowed as $u) {
+        if (strcasecmp((string) $u->user_nicename, (string) $u->user_login) === 0) {
+            $same++;
+        }
+    }
+
+    return ['module' => $module, 'roles' => $roles, 'authors' => count($users), 'without_role' => $without, 'allowed_users' => count($allowed), 'slug_equals_login' => $same];
 }
 
 function pkde_drift_collect(): array

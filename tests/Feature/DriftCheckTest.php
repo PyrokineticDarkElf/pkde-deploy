@@ -17,7 +17,7 @@ function pkdeGoodFacts(): array
         'woocommerce_active' => true,
         'cf7_forms' => [['id' => 5, 'title' => 'Contact form', 'headers' => "Reply-To: [your-email]\nCc: [_site_admin_email]", 'has_subject' => false, 'subject' => PKDE_DRIFT_SUBJECT, 'mail2_active' => false, 'mail2_subject' => '']],
         'cf7_active' => true,
-        'author_archive' => ['module' => true, 'roles' => ['author'], 'authors' => 2, 'without_role' => 0],
+        'author_archive' => ['module' => true, 'roles' => ['author'], 'authors' => 2, 'without_role' => 0, 'allowed_users' => 2, 'slug_equals_login' => 0],
         'smtp_host_set' => true,
         'post_smtp' => ['transport' => 'smtp', 'active_transport' => 'PostmanSmtpModuleTransport', 'sender_set' => true, 'envelope_set' => true, 'host_set' => true, 'password_set' => true],
         'active_plugins' => ['wordfence', 'seo-by-rank-math', 'ewww-image-optimizer', 'w3-total-cache', 'speculation-rules', 'wps-hide-login', 'simple-cloudflare-turnstile', 'contact-form-7', 'post-smtp'],
@@ -512,21 +512,33 @@ it('fails admin_email when it differs from WP_ADMIN_EMAIL and never prints eithe
         ->and(json_encode($row))->not->toContain('office@acme-widgets.co.uk');
 });
 
-it('reports users with published posts but no allowed role as INFO, counts only', function () {
+it('fails a user with published posts and no allowed role, with counts only', function () {
     $facts = pkdeGoodFacts();
-    expect(pkdeStatuses($facts)['Users with published posts without an allowed author role'])->toBe('PASS');
+    $row = 'Every user with published posts has an allowed author role';
+    expect(pkdeStatuses($facts)[$row])->toBe('PASS');
 
     $facts['author_archive']['without_role'] = 1;
-    $row = array_values(array_filter(pkde_drift_evaluate($facts), fn($r) => $r[1] === 'Users with published posts without an allowed author role'))[0];
+    $found = array_values(array_filter(pkde_drift_evaluate($facts), fn($r) => $r[1] === $row))[0];
 
-    expect($row[0])->toBe('INFO')
-        ->and($row[2])->toContain('1 of 2')
-        ->and($row[2])->toContain('author');
+    expect($found[0])->toBe('FAIL')
+        ->and($found[2])->toContain('1 of 2')
+        ->and($found[2])->toContain('wp user add-role');
+});
+
+it('fails an allowed-role user whose archive slug equals the login, and prints no name', function () {
+    $facts = pkdeGoodFacts();
+    $row = 'Author archive slug (user_nicename) differs from the login';
+    expect(pkdeStatuses($facts)[$row])->toBe('PASS');
+
+    $facts['author_archive']['slug_equals_login'] = 1;
+    $found = array_values(array_filter(pkde_drift_evaluate($facts), fn($r) => $r[1] === $row))[0];
+
+    expect($found[0])->toBe('FAIL')->and($found[2])->toContain('1 of 2');
 });
 
 it('skips the author archive rows for facts that do not carry them', function () {
     $facts = pkdeGoodFacts();
     unset($facts['author_archive']);
 
-    expect(pkdeStatuses($facts))->not->toHaveKey('Users with published posts without an allowed author role');
+    expect(pkdeStatuses($facts))->not->toHaveKey('Every user with published posts has an allowed author role');
 });
