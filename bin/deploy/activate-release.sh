@@ -37,11 +37,15 @@
 # generated code stubs with no release-specific paths: W3TC's advanced-cache.php
 # and object-cache.php drop-ins (see "drop-ins" below).
 #
-# Wordfence "Optimize the Firewall" is deliberately NOT supported: it writes an
+# Wordfence's own "Optimize the Firewall" button stays forbidden: it writes an
 # absolute path to ONE release directory into .user.ini / .htaccess, which then
 # dangles when that release is pruned. Wordfence's default WAF mode needs none
 # of it. A new release simply has no .user.ini, so a previously optimised
-# firewall quietly reverts to the default mode on the next deploy.
+# firewall quietly reverts to the default mode on the next deploy. The one
+# supported way to run the firewall before WordPress is the opt-in
+# WORDFENCE_EXTENDED_PROTECTION=1 in shared/.env (bin/deploy/waf-prepend.sh, below):
+# its prepend file lives in shared/waf at a path that never changes and every
+# release gets a fresh web/.user.ini pointing at it (WP-85).
 
 set -euo pipefail
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026.11.13.5
+
+WP-85 follow-up (the standing rule "do not enable Optimize the Firewall"). **Adopt:** bump the package and the workflow tag.
+
+- `waf-prepend.sh` refuses to write `web/.user.ini` unless the shim it points at exists and is readable (a dangling `auto_prepend_file` fails every request). `activate-release.sh`'s header comment now says the Optimize button stays forbidden and the opt-in `WORDFENCE_EXTENDED_PROTECTION=1` is the one supported way. The rp retrospective's rule is updated in place in the template (F2, checklist, lesson 4).
+
 ## 2026.11.13.4
 
 The TPL-129 second pass (three of the four strongest audit leads, all low severity) and the Wordfence Extended Protection build (WP-85). **Adopt:** bump the package and the workflow tag. Nothing changes for a site until it opts in (below); a caller that has the `SSH_KNOWN_HOSTS` secrets can set `require-pinned-host-key: true`.

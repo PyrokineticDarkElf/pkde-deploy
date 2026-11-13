@@ -74,6 +74,8 @@ if (file_exists(\$pkdeWafBootstrap)) {
 }
 PHP
 chmod 644 "$SHIM.new" && mv "$SHIM.new" "$SHIM" || { echo "waf-prepend: cannot write $SHIM" >&2; exit 1; }
+# never point .user.ini at a file that is not there and readable: a dangling auto_prepend_file fails every request
+[ -r "$SHIM" ] || { echo "waf-prepend: $SHIM is not readable; web/.user.ini NOT written" >&2; exit 1; }
 
 mkdir -p "$RELEASE_DIR/web"
 block="$BEGIN
