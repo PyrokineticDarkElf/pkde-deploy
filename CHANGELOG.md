@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026.11.13.2
+
+Wordfence "Prevent discovery of usernames" joins the standard (owner yes, WP-88). **Adopt:** bump the package and the workflow tag (after 2026.11.13.1); production gets it at its next release.
+
+- **`loginSec_disableAuthorScan = 1`** (Wordfence: no username discovery through `?author=N` and the REST users list for anonymous visitors) is a Wordfence standard key: a drift row "Wordfence loginSec_disableAuthorScan" (FAIL when off; Wordfence is inactive on staging by design, so that row is skipped there), and the release step `wordfence-standard.php` turns it on at every release with plain SQL, before the alert-address part, so it applies even to a site that names no alert address. Proved on the template stack: with the option off an anonymous `GET /wp-json/wp/v2/users` answered 200, after the release step 401; a second run says "already on".
+
 ## 2026.11.13.1
 
 Author archive rows, owner decision (WP-88): blog authors who are administrators keep administrator and get the author role added. **Adopt:** bump the package and the workflow tag.

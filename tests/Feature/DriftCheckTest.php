@@ -51,6 +51,7 @@ it('fails each deviation on its own check', function (callable $break, string $c
     'wordfence update alerts on' => [fn(&$f) => $f['wordfence']['alertOn_update'] = '1', 'Wordfence alertOn_update'],
     'wordfence hourly cap' => [fn(&$f) => $f['wordfence']['alert_maxHourly'] = '5', 'Wordfence alert_maxHourly'],
     'wordfence value unset' => [fn(&$f) => $f['wordfence']['scansEnabled_themes'] = null, 'Wordfence scansEnabled_themes'],
+    'wordfence username discovery protection off' => [fn(&$f) => $f['wordfence']['loginSec_disableAuthorScan'] = '0', 'Wordfence loginSec_disableAuthorScan'],
     'alertEmails empty' => [fn(&$f) => $f['wordfence']['alertEmails'] = '', 'Wordfence alertEmails includes admin_email'],
     'alertEmails other address only' => [fn(&$f) => $f['wordfence']['alertEmails'] = 'someone@else.test', 'Wordfence alertEmails includes admin_email'],
     'turnstile hidden' => [fn(&$f) => $f['turnstile']['appearance'] = 'interaction-only', 'Turnstile widget always visible (cfturnstile_appearance)'],

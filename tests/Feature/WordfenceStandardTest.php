@@ -4,13 +4,13 @@
  * bin/deploy/wordfence-standard.php (WP-87) in a child PHP with a fake $wpdb and fake options (no WordPress, no Wordfence): the release step sets Wordfence's
  * alertEmails, in its wfconfig table, to exactly the alert address from .env, leaves a site alone that names none, and never prints an address.
  */
-function pkdeRunWordfenceStandard(array $constants, ?string $current, bool $wordfence = true): array
+function pkdeRunWordfenceStandard(array $constants, ?string $current, bool $wordfence = true, array $extraRows = []): array
 {
     $defines = '';
     foreach ($constants as $name => $value) {
         $defines .= 'define(' . var_export($name, true) . ', ' . var_export($value, true) . ");\n";
     }
-    $rows = $current === null ? [] : ['alertEmails' => $current];
+    $rows = ($current === null ? [] : ['alertEmails' => $current]) + $extraRows;
     $fake = 'function get_option($k, $d = false) { return $k === "active_plugins" ? ' . ($wordfence ? '["akismet/akismet.php", "wordfence/wordfence.php"]' : '["akismet/akismet.php"]') . ' : $d; }
 function is_multisite() { return false; }
 class FakeWpdb { public string $base_prefix = "wp_"; public array $rows = ' . var_export($rows, true) . ';
@@ -21,12 +21,15 @@ class FakeWpdb { public string $base_prefix = "wp_"; public array $rows = ' . va
   public function query($p) { [$q, $a] = $p; $this->rows[$a[0]] = $a[1]; return 1; } }
 $wpdb = new FakeWpdb();';
     $prelude = "<?php\n$defines$fake\nrequire " . var_export(dirname(__DIR__, 2) . '/bin/deploy/wordfence-standard.php', true) . ";\n"
-        . "echo 'FINAL=', \$wpdb->rows['alertEmails'] ?? '', \"\\n\";\n";
+        . "echo 'FINAL=', \$wpdb->rows['alertEmails'] ?? '', \"\\n\", 'SCAN=', \$wpdb->rows['loginSec_disableAuthorScan'] ?? 'unset', \"\\n\";\n";
     $file = tempnam(sys_get_temp_dir(), 'wfstd');
     file_put_contents($file, $prelude);
     $out = (string) shell_exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($file) . ' 2>&1');
     unlink($file);
     preg_match('/FINAL=(.*)/', $out, $m);
+
+    preg_match('/SCAN=(.*)/', $out, $n);
+    $GLOBALS['pkdeScan'] = $n[1] ?? null;
 
     return [$out, $m[1] ?? null];
 }
@@ -61,4 +64,20 @@ it('leaves a site alone that names no address, or has no Wordfence', function ()
 
     [$out, $final] = pkdeRunWordfenceStandard(['WP_ADMIN_EMAIL' => 'office@acme-widgets.co.uk'], 'keep@else.test', false);
     expect($out)->toContain('Wordfence is not active')->and($final)->toBe('keep@else.test');
+});
+
+it('turns Wordfence\'s username discovery protection on every release, with or without an alert address', function () {
+    [$out] = pkdeRunWordfenceStandard([], 'keep@else.test');
+    expect($GLOBALS['pkdeScan'])->toBe('1')->and($out)->toContain('loginSec_disableAuthorScan: set to on');
+
+    [$out] = pkdeRunWordfenceStandard(['WP_ADMIN_EMAIL' => 'office@acme-widgets.co.uk'], 'office@acme-widgets.co.uk', true, ['loginSec_disableAuthorScan' => '0']);
+    expect($GLOBALS['pkdeScan'])->toBe('1');
+
+    [$out] = pkdeRunWordfenceStandard([], 'keep@else.test', true, ['loginSec_disableAuthorScan' => '1']);
+    expect($GLOBALS['pkdeScan'])->toBe('1')->and($out)->toContain('already on');
+});
+
+it('leaves the setting alone when Wordfence is not active', function () {
+    [$out] = pkdeRunWordfenceStandard([], null, false);
+    expect($GLOBALS['pkdeScan'])->toBe('unset')->and($out)->toContain('Wordfence is not active');
 });

@@ -63,6 +63,8 @@ function pkde_drift_wordfence_standard(): array
         'alertOn_firstAdminLoginOnly' => '1', 'alertOn_wordfenceDeactivated' => '1', 'alertOn_wafDeactivated' => '1',
         'alertOn_scanIssues' => '1', 'scansEnabled_plugins' => '1', 'scansEnabled_themes' => '1',
         'alert_maxHourly' => '3', 'email_summary_enabled' => '1', 'email_summary_interval' => 'weekly',
+        // Prevent discovery of usernames through ?author=N and the REST users list (WP-88; Wordfence's default, now part of the standard and set by every release)
+        'loginSec_disableAuthorScan' => '1',
     ];
 }
 
