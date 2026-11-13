@@ -260,6 +260,17 @@ function pkde_drift_evaluate(array $f): array
 
     // Relevanssi (the shop's search, TPL-133): installed but never indexed, it answers every search with nothing. settings script: the kit's
     // bin/relevanssi-settings.php rebuilds the index. Only while the plugin is active; the fact is the number of rows in its index table.
+    // REST users (WP-88): an anonymous GET of the user routes must not list anybody (401, 403 or 404; the platform module rest-users-private answers 404 in every environment)
+    if (is_array($f['rest_users'] ?? null)) {
+        foreach (['list' => '/wp/v2/users', 'single' => '/wp/v2/users/<id>'] as $key => $route) {
+            if (! array_key_exists($key, $f['rest_users']) || $f['rest_users'][$key] === null) {
+                continue;
+            }
+            $status = (int) $f['rest_users'][$key];
+            $cmp("Anonymous GET $route does not list users (401, 403 or 404)", in_array($status, [401, 403, 404], true), "answers $status: bump pkde/platform to 2026.11.13.1 or later (module rest-users-private), or turn on Wordfence's Prevent discovery of usernames");
+        }
+    }
+
     // Author archives (WP-88): closed for users without an allowed role by the platform module; INFO when real authors lack the role (their archive is a 404 by design)
     if (is_array($f['author_archive'] ?? null)) {
         $aa = $f['author_archive'];
@@ -398,6 +409,24 @@ function pkde_drift_relevanssi_indexed(): int
     return (int) $wpdb->get_var("SELECT COUNT(*) FROM `$table`");
 }
 
+/** An anonymous request to the user routes, dispatched inside WordPress (so staging's Basic auth and a firewall do not matter): the status codes only. */
+function pkde_drift_rest_users_probe(): array
+{
+    $previous = get_current_user_id();
+    wp_set_current_user(0);
+    $ids = get_users(['number' => 1, 'fields' => 'ID', 'has_published_posts' => true]);
+    $routes = ['list' => '/wp/v2/users', 'single' => $ids ? '/wp/v2/users/' . (int) $ids[0] : null];
+    $out = [];
+
+    foreach ($routes as $key => $route) {
+        $out[$key] = $route === null ? null : rest_do_request(new WP_REST_Request('GET', $route))->get_status();
+    }
+
+    wp_set_current_user($previous);
+
+    return $out;
+}
+
 /** Author archive facts: is the module loaded, how many users have published posts, how many of them hold no allowed role, how many users with an allowed role have a nicename (the archive slug) equal to their login. Counts only, no names. */
 function pkde_drift_author_archive(): array
 {
@@ -510,6 +539,7 @@ function pkde_drift_collect(): array
         ],
         'relevanssi_indexed' => in_array('relevanssi', $active, true) ? pkde_drift_relevanssi_indexed() : null,
         'author_archive' => pkde_drift_author_archive(),
+        'rest_users' => pkde_drift_rest_users_probe(),
         'woocommerce_active' => in_array('woocommerce', $active, true),
         'breadcrumbs' => pkde_drift_breadcrumb_facts(),
         'cache_basket_visitors' => pkde_w3tc_cache_basket_visitors(),

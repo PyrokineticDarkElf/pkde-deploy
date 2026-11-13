@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026.11.13.3
+
+REST users closed for anonymous visitors on every site (owner yes, WP-88; needs pkde-platform 2026.11.13.1). **Adopt:** bump pkde/platform to 2026.11.13.1, then the package and the workflow tag to this one.
+
+- **Two drift rows, an anonymous probe:** "Anonymous GET /wp/v2/users does not list users (401, 403 or 404)" and "... /wp/v2/users/<id> ...". The check dispatches the two requests inside WordPress as a logged-out visitor (so staging's Basic auth and a firewall do not matter, and no HTTP is sent) and records the status codes only; 200 is a FAIL. It passes with the platform module `rest-users-private` (404 in every environment, Wordfence or not) or with Wordfence's username discovery protection on (401). The single-user probe uses the ID of a real author.
+
 ## 2026.11.13.2
 
 Wordfence "Prevent discovery of usernames" joins the standard (owner yes, WP-88). **Adopt:** bump the package and the workflow tag (after 2026.11.13.1); production gets it at its next release.

@@ -17,6 +17,7 @@ function pkdeGoodFacts(): array
         'woocommerce_active' => true,
         'cf7_forms' => [['id' => 5, 'title' => 'Contact form', 'headers' => "Reply-To: [your-email]\nCc: [_site_admin_email]", 'has_subject' => false, 'subject' => PKDE_DRIFT_SUBJECT, 'mail2_active' => false, 'mail2_subject' => '']],
         'cf7_active' => true,
+        'rest_users' => ['list' => 404, 'single' => 404],
         'author_archive' => ['module' => true, 'roles' => ['author'], 'authors' => 2, 'without_role' => 0, 'allowed_users' => 2, 'slug_equals_login' => 0],
         'smtp_host_set' => true,
         'post_smtp' => ['transport' => 'smtp', 'active_transport' => 'PostmanSmtpModuleTransport', 'sender_set' => true, 'envelope_set' => true, 'host_set' => true, 'password_set' => true],
@@ -63,6 +64,8 @@ it('fails each deviation on its own check', function (callable $break, string $c
     'cf7 no admin Cc' => [fn(&$f) => $f['cf7_forms'][0]['headers'] = 'Reply-To: [your-email]', 'CF7 form #5 Mail Ccs the admin (Cc: [_site_admin_email])'],
     'cf7 default name' => [fn(&$f) => $f['cf7_forms'][0]['title'] = 'Contact form 1', 'CF7 form #5 has a descriptive name'],
     'author archives module missing' => [fn(&$f) => $f['author_archive']['module'] = false, 'Author archives are closed for users without an allowed role (platform module author-archives)'],
+    'rest users list open' => [fn(&$f) => $f['rest_users']['list'] = 200, 'Anonymous GET /wp/v2/users does not list users (401, 403 or 404)'],
+    'rest users single open' => [fn(&$f) => $f['rest_users']['single'] = 200, 'Anonymous GET /wp/v2/users/<id> does not list users (401, 403 or 404)'],
     'cf7 subject text' => [fn(&$f) => $f['cf7_forms'][0]['subject'] = '[your-subject]', 'CF7 form #5 mail subject is the fixed text'],
     'w3tc minify on' => [fn(&$f) => $f['w3tc']['settings']['minify.enabled'] = true, 'W3TC minify.enabled'],
     'w3tc browser cache on' => [fn(&$f) => $f['w3tc']['settings']['browsercache.enabled'] = true, 'W3TC browsercache.enabled'],
@@ -542,4 +545,15 @@ it('skips the author archive rows for facts that do not carry them', function ()
     unset($facts['author_archive']);
 
     expect(pkdeStatuses($facts))->not->toHaveKey('Every user with published posts has an allowed author role');
+});
+
+it('accepts 401, 403 and 404 for the anonymous user routes and skips a probe it could not make', function () {
+    $facts = pkdeGoodFacts();
+    foreach ([401, 403, 404] as $status) {
+        $facts['rest_users'] = ['list' => $status, 'single' => $status];
+        expect(pkdeStatuses($facts)['Anonymous GET /wp/v2/users does not list users (401, 403 or 404)'])->toBe('PASS');
+    }
+
+    $facts['rest_users'] = ['list' => 404, 'single' => null];
+    expect(pkdeStatuses($facts))->not->toHaveKey('Anonymous GET /wp/v2/users/<id> does not list users (401, 403 or 404)');
 });
