@@ -1,7 +1,10 @@
 # Changelog
 
-## Unreleased
+## 2026.11.13
 
+Drift rows for the author archives (WP-88; needs pkde-platform 2026.11.13) and two small env-tool changes from the mds pilot (WP-87). **Adopt:** bump the package and the workflow tag; bump pkde/platform to 2026.11.13 (or the new row FAILs).
+
+- **Drift rows, author archives.** "Author archives are closed for users without an allowed role (platform module author-archives)": FAIL until the platform module is loaded. "Users with published posts without an allowed author role": INFO with counts only (no names, logins or addresses) when some users who have published posts hold none of the allowed roles; their archive is a 404 by design and their byline links home.
 - **`env-seed.sh` always creates `WP_ADMIN_EMAIL` and `WORDFENCE_ALERT_EMAIL`** (section "WP Admin", CONCEALED), empty when the server `.env` lacks them, so the empty alert field documents the option. The note's own notes carry the line "WORDFENCE_ALERT_EMAIL empty = Wordfence alerts go to WP_ADMIN_EMAIL". `env-pull.sh` treats an empty `WORDFENCE_ALERT_EMAIL` (or `WP_ADMIN_EMAIL`) as unset: neither is a required variable, so it writes `WORDFENCE_ALERT_EMAIL=` and does not refuse (tested).
 
 - **`env-pull.sh --check` compares the note with the server only** (mds pilot, WP-87). Variables that `.env.example` has and the note lacks are listed as `INFO` and no longer make `--check` say DIFFERS or exit 1.

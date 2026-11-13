@@ -258,6 +258,18 @@ function pkde_drift_evaluate(array $f): array
 
     // Relevanssi (the shop's search, TPL-133): installed but never indexed, it answers every search with nothing. settings script: the kit's
     // bin/relevanssi-settings.php rebuilds the index. Only while the plugin is active; the fact is the number of rows in its index table.
+    // Author archives (WP-88): closed for users without an allowed role by the platform module; INFO when real authors lack the role (their archive is a 404 by design)
+    if (is_array($f['author_archive'] ?? null)) {
+        $aa = $f['author_archive'];
+        $cmp('Author archives are closed for users without an allowed role (platform module author-archives)', ! empty($aa['module']), 'the pkde-platform module author-archives is not loaded: bump pkde/platform to 2026.11.13 or later');
+        $without = (int) ($aa['without_role'] ?? 0);
+        if ($without > 0) {
+            $add('INFO', 'Users with published posts without an allowed author role', $without . ' of ' . (int) ($aa['authors'] ?? 0) . ' users with published posts hold none of (' . implode(', ', (array) ($aa['roles'] ?? [])) . '): their archive is a 404 and their byline links home; give them the role or set AUTHOR_ARCHIVE_ROLES in .env');
+        } else {
+            $add('PASS', 'Users with published posts without an allowed author role', '');
+        }
+    }
+
     if (in_array('relevanssi', (array) ($f['active_plugins'] ?? []), true) && array_key_exists('relevanssi_indexed', $f)) {
         $cmp('Relevanssi index is built (searches find products)', (int) $f['relevanssi_indexed'] > 0, 'the Relevanssi index is empty: run wp eval-file vendor/pkde/sage-kit/bin/relevanssi-settings.php (it rebuilds the index)', true);
     }
@@ -382,6 +394,24 @@ function pkde_drift_relevanssi_indexed(): int
     return (int) $wpdb->get_var("SELECT COUNT(*) FROM `$table`");
 }
 
+/** Author archive facts: is the module loaded, how many users have published posts, how many of them hold no allowed role. Counts only, no names. */
+function pkde_drift_author_archive(): array
+{
+    $module = function_exists('App\\MuPlugins\\author_has_allowed_role') && function_exists('App\\MuPlugins\\author_archive_allowed_roles');
+    $roles = $module ? \App\MuPlugins\author_archive_allowed_roles() : ['author'];
+    $users = get_users(['has_published_posts' => true, 'fields' => ['ID']]);
+    $without = 0;
+
+    foreach ($users as $u) {
+        $user = get_userdata((int) $u->ID);
+        if (! $user || array_intersect($roles, (array) $user->roles) === []) {
+            $without++;
+        }
+    }
+
+    return ['module' => $module, 'roles' => $roles, 'authors' => count($users), 'without_role' => $without];
+}
+
 function pkde_drift_collect(): array
 {
     $wfKeys = array_merge(array_keys(pkde_drift_wordfence_standard()), ['alertEmails']);
@@ -466,6 +496,7 @@ function pkde_drift_collect(): array
             'connected' => ! empty(((array) get_option('rank_math_connect_data'))['api_key'] ?? ''),
         ],
         'relevanssi_indexed' => in_array('relevanssi', $active, true) ? pkde_drift_relevanssi_indexed() : null,
+        'author_archive' => pkde_drift_author_archive(),
         'woocommerce_active' => in_array('woocommerce', $active, true),
         'breadcrumbs' => pkde_drift_breadcrumb_facts(),
         'cache_basket_visitors' => pkde_w3tc_cache_basket_visitors(),

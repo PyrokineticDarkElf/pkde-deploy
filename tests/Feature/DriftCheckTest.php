@@ -17,6 +17,7 @@ function pkdeGoodFacts(): array
         'woocommerce_active' => true,
         'cf7_forms' => [['id' => 5, 'title' => 'Contact form', 'headers' => "Reply-To: [your-email]\nCc: [_site_admin_email]", 'has_subject' => false, 'subject' => PKDE_DRIFT_SUBJECT, 'mail2_active' => false, 'mail2_subject' => '']],
         'cf7_active' => true,
+        'author_archive' => ['module' => true, 'roles' => ['author'], 'authors' => 2, 'without_role' => 0],
         'smtp_host_set' => true,
         'post_smtp' => ['transport' => 'smtp', 'active_transport' => 'PostmanSmtpModuleTransport', 'sender_set' => true, 'envelope_set' => true, 'host_set' => true, 'password_set' => true],
         'active_plugins' => ['wordfence', 'seo-by-rank-math', 'ewww-image-optimizer', 'w3-total-cache', 'speculation-rules', 'wps-hide-login', 'simple-cloudflare-turnstile', 'contact-form-7', 'post-smtp'],
@@ -60,6 +61,7 @@ it('fails each deviation on its own check', function (callable $break, string $c
     'cf7 subject field' => [fn(&$f) => $f['cf7_forms'][0]['has_subject'] = true, 'CF7 form #5 has no visitor Subject field'],
     'cf7 no admin Cc' => [fn(&$f) => $f['cf7_forms'][0]['headers'] = 'Reply-To: [your-email]', 'CF7 form #5 Mail Ccs the admin (Cc: [_site_admin_email])'],
     'cf7 default name' => [fn(&$f) => $f['cf7_forms'][0]['title'] = 'Contact form 1', 'CF7 form #5 has a descriptive name'],
+    'author archives module missing' => [fn(&$f) => $f['author_archive']['module'] = false, 'Author archives are closed for users without an allowed role (platform module author-archives)'],
     'cf7 subject text' => [fn(&$f) => $f['cf7_forms'][0]['subject'] = '[your-subject]', 'CF7 form #5 mail subject is the fixed text'],
     'w3tc minify on' => [fn(&$f) => $f['w3tc']['settings']['minify.enabled'] = true, 'W3TC minify.enabled'],
     'w3tc browser cache on' => [fn(&$f) => $f['w3tc']['settings']['browsercache.enabled'] = true, 'W3TC browsercache.enabled'],
@@ -508,4 +510,23 @@ it('fails admin_email when it differs from WP_ADMIN_EMAIL and never prints eithe
     expect($row[0])->toBe('FAIL')
         ->and(json_encode($row))->not->toContain('owner@acme-widgets.co.uk')
         ->and(json_encode($row))->not->toContain('office@acme-widgets.co.uk');
+});
+
+it('reports users with published posts but no allowed role as INFO, counts only', function () {
+    $facts = pkdeGoodFacts();
+    expect(pkdeStatuses($facts)['Users with published posts without an allowed author role'])->toBe('PASS');
+
+    $facts['author_archive']['without_role'] = 1;
+    $row = array_values(array_filter(pkde_drift_evaluate($facts), fn($r) => $r[1] === 'Users with published posts without an allowed author role'))[0];
+
+    expect($row[0])->toBe('INFO')
+        ->and($row[2])->toContain('1 of 2')
+        ->and($row[2])->toContain('author');
+});
+
+it('skips the author archive rows for facts that do not carry them', function () {
+    $facts = pkdeGoodFacts();
+    unset($facts['author_archive']);
+
+    expect(pkdeStatuses($facts))->not->toHaveKey('Users with published posts without an allowed author role');
 });
