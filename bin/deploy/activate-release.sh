@@ -78,6 +78,7 @@ echo "WP-CLI: $WP_CLI"
 PHP_BIN="$(command -v php83 || command -v php)"
 
 OPCACHE_PROBE_FILE=""
+OPCACHE_STALE_MARKER="$SHARED_DIR/.fresh-render-failed"   # written by the activation exec when the fresh render check fails, read (and the run failed) by the post exec
 finish() { rm -f "${OPCACHE_PROBE_FILE:-}"; echo "Exec '$MODE' finished after ${SECONDS}s"; }
 trap finish EXIT
 
@@ -154,6 +155,33 @@ seed_shared_dir languages
 rm -f "$RELEASE_DIR/.env"
 ln -s "$SHARED_DIR/.env" "$RELEASE_DIR/.env"
 
+# opcache.revalidate_path=1 (TPL-172). 20i's PHP-FPM runs OPcache with revalidate_path off: a script cached under the UNRESOLVED path (current/web/index.php)
+# keeps its bytecode, and that bytecode has the OLD release's directory compiled in (__DIR__), so after the symlink switch the web PHP runs the previous release
+# until an opcache_reset() (tcs staging, 2026-11-18: 6+ minutes after a green deploy every uncached page still came from the previous release; reproduced on
+# PHP-FPM 8.3: with the default the pool serves the old release for good after the switch, a web-side opcache_reset() fixes it, and with this setting set in the
+# docroot's .user.ini the very next request after the switch runs the new release). The setting is INI_ALL, so a per-directory .user.ini may set it; it makes
+# OPcache resolve the real path on each lookup (the realpath cache keeps that cheap). The reset below stays as the second line of defence, and the fresh render
+# check proves the result. A host that locks the value shows it in the "Web PHP:" line (revalidate_path=0 although this block is there). Opt out with
+# PKDE_OPCACHE_REVALIDATE_PATH=0 in shared/.env. A first deploy that adds the block takes effect when the pool next reads .user.ini (user_ini.cache_ttl, 300 s).
+PKDE_OPCACHE_REVALIDATE_PATH_FLAG="$(sed -n 's/^PKDE_OPCACHE_REVALIDATE_PATH=//p' "$SHARED_DIR/.env" 2>/dev/null | tr -d "\"'\r" | tail -1)" || PKDE_OPCACHE_REVALIDATE_PATH_FLAG=""
+if [ "$PKDE_OPCACHE_REVALIDATE_PATH_FLAG" != 0 ]; then
+    mkdir -p "$RELEASE_DIR/web"
+    ini="$RELEASE_DIR/web/.user.ini"
+    tmp_ini="$(mktemp)"
+    if [ -f "$ini" ]; then
+        awk -v b='; pkde opcache' -v e='; END pkde opcache' '$0==b{skip=1;next} skip&&$0==e{skip=0;next} !skip{print}' "$ini" > "$tmp_ini"
+        [ -s "$tmp_ini" ] && printf '\n' >> "$tmp_ini"
+    else
+        : > "$tmp_ini"
+    fi
+    printf '%s\n' '; pkde opcache' 'opcache.revalidate_path = 1' '; END pkde opcache' >> "$tmp_ini"
+    cat "$tmp_ini" > "$ini" && chmod 644 "$ini"
+    rm -f "$tmp_ini"
+    echo "OPcache: opcache.revalidate_path=1 set in web/.user.ini (the web PHP then follows the new current at once)"
+else
+    echo "OPcache: revalidate_path block off (PKDE_OPCACHE_REVALIDATE_PATH=0)"
+fi
+
 # Wordfence Extended Protection (WP-85), only when shared/.env has WORDFENCE_EXTENDED_PROTECTION=1: the firewall's prepend file lives in shared/waf at a path that
 # never changes and this release's web/.user.ini points at it (Wordfence's own installer writes both into the release, where the next release prunes them).
 # A failure here never stops the activation: the firewall then runs as the plugin's normal mode.
@@ -227,11 +255,18 @@ echo "Activated release $RELEASE -> $CURRENT_LINK"
 # opcache_reset() run BY THE WEB POOL did. WP-CLI cannot do it: the CLI has its own separate opcache.
 # So: drop a one-time, unguessably named PHP file into the new release, request it over HTTPS via WP_HOME,
 # and delete it straight away (an EXIT trap covers every way out; a deleted PHP file can still answer for about 10 s on 20i, OPcache
-# revalidates every 10 s on top of the NFS attribute cache, which is harmless here: the name is a random 128-bit token and it prints one line). The file also reports which release it runs
+# revalidates every 10 s on top of the NFS attribute cache, which is harmless here: the name is a random 128-bit token and it prints a few lines). The file also reports which release it runs
 # from, which doubles as a check that the live web server really serves the release just activated.
-# Failure only warns: a deploy must never fail over this.
+#
+# What the probe tells the log (TPL-172, tcs staging, 2026-11-18: the probe answered "serves release X" and every uncached page still came from the
+# PREVIOUS release for 6+ minutes): the answer's first line is "ok <release>"; the second line says what the pool that answered looks like: whether
+# opcache_reset() returned true (it returns false and the page still prints "ok" when opcache.restrict_api blocks it), the opcache instance (its start
+# time: one value per FPM pool), the host, and the settings that decide how stale code survives. The probe is requested several times (OPCACHE_EXTRA_HITS,
+# default 6): a hosting setup with more than one PHP pool behind the same site answers from different pools, each gets the reset, and the log counts the
+# distinct instances. Then the FRESH RENDER CHECK (below) proves what the reset is for. Failure to reset only warns; a stale render fails the run.
+rm -f "$OPCACHE_STALE_MARKER"
 reset_web_opcache() {
-    local url token answer
+    local url token answer first
     url="$(sed -n 's/^WP_HOME=//p' "$SHARED_DIR/.env" 2>/dev/null | tr -d "\"'\r" | head -1)" || url=""
     url="${url%/}"
     if [ -z "$url" ] || ! command -v curl >/dev/null 2>&1; then
@@ -242,7 +277,7 @@ reset_web_opcache() {
 
     token="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
     OPCACHE_PROBE_FILE="$RELEASE_DIR/web/zz-opcache-$token.php"
-    printf '%s\n' '<?php if (function_exists("opcache_reset")) { opcache_reset(); } echo "ok ", basename(dirname(realpath(__DIR__)));' > "$OPCACHE_PROBE_FILE"
+    printf '%s\n' '<?php $r = function_exists("opcache_reset") ? @opcache_reset() : null; clearstatcache(true); $s = function_exists("opcache_get_status") ? @opcache_get_status(false) : null; echo "ok ", basename(dirname(realpath(__DIR__))), "\n"; echo "pool=", $s ? ($s["opcache_statistics"]["start_time"] ?? "?") : "none", " reset=", var_export($r, true), " sapi=", PHP_SAPI, " php=", PHP_VERSION, " host=", php_uname("n"), " revalidate_path=", ini_get("opcache.revalidate_path"), " revalidate_freq=", ini_get("opcache.revalidate_freq"), " validate_timestamps=", ini_get("opcache.validate_timestamps"), " restrict_api=", ini_get("opcache.restrict_api") ?: "-", " realpath_ttl=", ini_get("realpath_cache_ttl"), "\n";' > "$OPCACHE_PROBE_FILE"
 
     # The 20i web node can lag a few seconds in resolving the new `current`, and answers 404 for the probe until it does
     # (bp BP-46). Retry on 404 only (default: every 5s, 19 tries, about 90s); the probe file stays in place meanwhile.
@@ -256,18 +291,91 @@ reset_web_opcache() {
     done
 
     if [ "$got" -eq 0 ]; then
-        rm -f "$OPCACHE_PROBE_FILE"; OPCACHE_PROBE_FILE=""
-        case "$answer" in
+        first="${answer%%$'\n'*}"
+        case "$first" in
             "ok $RELEASE") echo "Web opcache reset; the web server serves release $RELEASE" ;;
-            ok\ *) echo "WARN: the web opcache was reset but the web server reports release '${answer#ok }', not $RELEASE: it may still serve the old release." >&2 ;;
+            ok\ *) echo "WARN: the web opcache was reset but the web server reports release '${first#ok }', not $RELEASE: it may still serve the old release." >&2 ;;
             *) echo "WARN: the opcache reset request returned an unexpected answer: ${answer:0:200}" >&2 ;;
         esac
+        # what the answering pool looks like, and a reset that did not happen
+        local info="${answer#*$'\n'}"
+        [ "$info" != "$answer" ] && echo "Web PHP: ${info:0:400}"
+        case "$info" in *"reset=false"*) echo "WARN: opcache_reset() returned false in the web pool (opcache.restrict_api?): the reset did NOT happen there." >&2 ;; esac
+        # more hits: every PHP pool or node that answers gets its own reset, and the distinct opcache instances are counted
+        local hits="${OPCACHE_EXTRA_HITS:-6}" i pools="" p one
+        p="$(printf '%s\n' "$info" | sed -n 's/^pool=\([^ ]*\).*/\1/p')"; pools="$p"
+        for i in $(seq 1 "$hits"); do
+            if one="$(curl -fsSL --max-time 30 "$url/zz-opcache-$token.php?n=$i" 2>/dev/null)"; then
+                p="$(printf '%s\n' "$one" | sed -n 's/^pool=\([^ ]*\).*/\1/p')"; pools="$pools $p"
+            fi
+        done
+        local distinct
+        distinct="$(printf '%s\n' $pools | sort -u | grep -c .)" || distinct=0
+        [ "$distinct" -gt 1 ] && echo "WARN: $distinct different PHP opcache instances answered the probe (more than one pool or node serves this site); each one was reset by its own probe request, but a pool that answered no request was not." >&2
+        [ "$distinct" -eq 1 ] && echo "Web PHP: one opcache instance answered $((hits + 1)) probe requests"
+        verify_fresh_render "$url" "$token"
+        rm -f "$OPCACHE_PROBE_FILE"; OPCACHE_PROBE_FILE=""
     else
         rm -f "$OPCACHE_PROBE_FILE"; OPCACHE_PROBE_FILE=""
         echo "WARN: ================================================================" >&2
         echo "WARN: could not request the opcache reset at $url (${answer:0:200})." >&2
         echo "WARN: the web server may keep running the PREVIOUS release's code until its opcache is cleared." >&2
         echo "WARN: ================================================================" >&2
+    fi
+    return 0
+}
+
+# --- the FRESH RENDER CHECK (TPL-172): a page nobody has cached must show this release's CSS ---
+# The probe above proves the web server can reach the new release; this proves what the reset is for. It requests the home page with a one-off query
+# string (the page cache does not store a URL with one) and compares the stylesheet it links (assets/app-<hash>.css) with the one in THIS release's Vite
+# manifest. Equal: fine. Different: the web PHP is still running the previous release; the probe is requested again (another reset) and the page re-read,
+# up to 4 times, and a page that still differs after that marks the deploy FAILED (the release stays live; the run ends red at its end, with the reason).
+# It never guesses: when the manifest has no app.css entry, the page cannot be fetched (401, 403, 5xx, a coming-soon gate) or links no such stylesheet,
+# it says so and checks nothing. PKDE_FRESH_RENDER_CHECK in shared/.env: fail (default), warn (a mismatch only warns) or off.
+verify_fresh_render() {
+    local url="$1" token="$2" mode expected served manifest page attempt=1 tries=4
+    mode="$(sed -n 's/^PKDE_FRESH_RENDER_CHECK=//p' "$SHARED_DIR/.env" 2>/dev/null | tr -d "\"'\r" | tail -1)" || mode=""
+    case "$mode" in off) echo "Fresh render check: off (PKDE_FRESH_RENDER_CHECK=off)"; return 0 ;; warn) ;; *) mode=fail ;; esac
+
+    manifest="$(ls "$RELEASE_DIR"/web/app/themes/*/public/build/manifest.json 2>/dev/null | head -1)" || manifest=""
+    expected=""
+    [ -n "$manifest" ] && expected="$(tr -d '\n' < "$manifest" | sed -n 's/.*"resources\/css\/app\.css"[^}]*"file": *"\([^"]*\)".*/\1/p')"
+    expected="${expected##*/}"
+    if [ -z "$expected" ]; then
+        echo "Fresh render check: skipped (this release has no Vite manifest entry for resources/css/app.css)"
+        return 0
+    fi
+
+    while :; do
+        if ! page="$(curl -fsSL --max-time 30 -A 'pkde-deploy-fresh-render-check' "$url/?pkde-fresh-render=$token-$attempt" 2>&1)"; then
+            echo "Fresh render check: not done, the home page could not be fetched (${page:0:160})" >&2
+            return 0
+        fi
+        served="$(printf '%s' "$page" | grep -o 'assets/app-[A-Za-z0-9_-]*\.css' | head -1)" || served=""
+        served="${served##*/}"
+        if [ -z "$served" ]; then
+            echo "Fresh render check: not done, the page links no app-<hash>.css stylesheet"
+            return 0
+        fi
+        if [ "$served" = "$expected" ]; then
+            echo "Fresh render check: the uncached home page links $served, as this release's manifest does"
+            return 0
+        fi
+        if [ "$attempt" -ge "$tries" ]; then break; fi
+        echo "WARN: fresh render check: the page links $served but this release's manifest names $expected; resetting the web opcache again (attempt $attempt of $tries)" >&2
+        curl -fsSL --max-time 30 "$url/zz-opcache-$token.php?again=$attempt" >/dev/null 2>&1 || true
+        sleep "${PKDE_FRESH_RENDER_PAUSE:-5}"
+        attempt=$((attempt + 1))
+    done
+
+    echo "WARN: ================================================================" >&2
+    echo "WARN: STALE RELEASE: an uncached page of $url still links $served, but release $RELEASE names $expected." >&2
+    echo "WARN: the web PHP is serving the PREVIOUS release although current points at $RELEASE and the web opcache was reset (tcs staging, TPL-172)." >&2
+    echo "WARN: check opcache.restrict_api / opcache.revalidate_path / realpath_cache_ttl and whether more than one PHP pool serves the site (see the Web PHP lines above)," >&2
+    echo "WARN: restart PHP for the package in the My20i panel, then request the site and re-run this check by hand." >&2
+    echo "WARN: ================================================================" >&2
+    if [ "$mode" = fail ]; then
+        printf '%s\n' "$RELEASE" > "$OPCACHE_STALE_MARKER"
     fi
     return 0
 }
@@ -618,3 +726,11 @@ fi
 
 stage "post steps done"
 empty_trash
+
+# The fresh render check (above) found the web PHP still on the previous release: the release is live and everything else ran, and the run ends red so a person sees it.
+if [ -f "$OPCACHE_STALE_MARKER" ]; then
+    stale_release="$(cat "$OPCACHE_STALE_MARKER" 2>/dev/null)"
+    rm -f "$OPCACHE_STALE_MARKER"
+    echo "ERROR: release ${stale_release:-$RELEASE} is activated but the web PHP still renders the PREVIOUS release (see STALE RELEASE above). Exiting 3." >&2
+    exit 3
+fi

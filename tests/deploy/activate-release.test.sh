@@ -95,7 +95,7 @@ check "wflogs config*.php NOT copied (Wordfence regenerates them)" "! ls $BASE/s
 check "ewww seeded (placeholder + binary)" "[ -f $BASE/shared/ewww/lazy/placeholder.png ] && [ -f $BASE/shared/ewww/jpegtran ]"
 check "R2 ewww is a symlink to shared" "[ \"\$(readlink $BASE/releases/R2/web/app/ewww)\" = $BASE/shared/ewww ]"
 check "advanced-cache.php drop-in carried into R2" "[ -f $BASE/releases/R2/web/app/advanced-cache.php ]"
-check "R2 has NO .user.ini (so no dangling auto_prepend_file path)" "[ ! -e $BASE/releases/R2/web/.user.ini ]"
+check "R2 has no auto_prepend_file in its .user.ini (so no dangling path; the file itself only carries the opcache.revalidate_path block, TPL-172)" "! grep -q auto_prepend_file $BASE/releases/R2/web/.user.ini 2>/dev/null"
 check "runtime-added .htaccess rule preserved" "grep -q USER-ADDED-BLOCK $BASE/shared/.htaccess"
 check "no leftover *.seeding.* temp dirs" "! ls -d $BASE/shared/*.seeding.* >/dev/null 2>&1"
 check "current -> R2" "[ \"\$(readlink $BASE/current)\" = $BASE/releases/R2 ]"
@@ -160,7 +160,21 @@ url="\${@: -1}"
 echo "\$url" >> "$T/curl.log"
 f=\$(ls $BASE/current/web/zz-opcache-*.php 2>/dev/null | head -1)
 if [ -n "\$f" ]; then echo "EXISTS \$(grep -c 'opcache_reset' "\$f")" >> "$T/curl.log"; fi
+# The fresh render check asks for the home page with a one-off query string: the stub answers with a stylesheet link (page-css), or fails (page-fail), or
+# changes its answer from the second request on (page-css-then).
+case "\$url" in *pkde-fresh-render*)
+  [ -f "$T/page-fail" ] && { echo "curl: (22) The requested URL returned error: 401" >&2; exit 22; }
+  css="\$(cat "$T/page-css" 2>/dev/null)"
+  nfr=\$(grep -c 'pkde-fresh-render' "$T/curl.log")
+  if [ -f "$T/page-css-then" ] && [ "\$nfr" -ge 2 ]; then css="\$(cat "$T/page-css-then")"; fi
+  if [ -n "\$css" ]; then echo "<link rel=stylesheet href=/app/themes/sage/public/build/assets/\$css>"; else echo "<html>no stylesheet</html>"; fi
+  exit 0 ;;
+esac
+nprobe=\$(grep -c 'zz-opcache' "$T/curl.log")
 case "\$(cat "$T/curl-mode")" in
+  okinfo) printf 'ok %s\\npool=111 reset=true sapi=fpm-fcgi php=8.3.1 host=web1 revalidate_path=0 revalidate_freq=10 validate_timestamps=1 restrict_api=- realpath_ttl=120\\n' "\$(basename "\$(readlink -f "$BASE/current")")" ;;
+  twopools) printf 'ok %s\\npool=%s reset=true sapi=fpm-fcgi php=8.3.1 host=web1 revalidate_path=0 revalidate_freq=10 validate_timestamps=1 restrict_api=- realpath_ttl=120\\n' "\$(basename "\$(readlink -f "$BASE/current")")" "\$((111 + (nprobe % 2) * 111))" ;;
+  resetfalse) printf 'ok %s\\npool=111 reset=false sapi=fpm-fcgi php=8.3.1 host=web1 revalidate_path=0 revalidate_freq=10 validate_timestamps=1 restrict_api=/x realpath_ttl=120\\n' "\$(basename "\$(readlink -f "$BASE/current")")" ;;
   ok) echo "ok \$(basename "\$(readlink -f "$BASE/current")")" ;;
   wrongrel) echo "ok 19990101000000" ;;
   fail) echo "curl: (22) The requested URL returned error: 403" >&2; exit 22 ;;
@@ -173,6 +187,8 @@ case "\$(cat "$T/curl-mode")" in
 esac
 STUB
 chmod +x "$T/bin/curl"
+# the classic scenarios below count the probe requests: no extra hits and no waiting between fresh render attempts there (the new scenarios 9h.. set their own)
+export OPCACHE_EXTRA_HITS=0 PKDE_FRESH_RENDER_PAUSE=0
 echo "WP_ENV=production" > $BASE/shared/.env; echo "WP_HOME=https://example.test/" >> $BASE/shared/.env
 : > $T/curl.log; echo ok > $T/curl-mode; mkrelease R20
 bash $S $BASE R20 5 >$T/s9a.log 2>&1; rc=$?
@@ -215,6 +231,105 @@ echo "WP_ENV=production" > $BASE/shared/.env; : > $T/curl.log; mkrelease R23
 bash $S $BASE R23 5 >$T/s9d.log 2>&1; rc=$?
 check "no WP_HOME: skipped with a warning, exit 0, curl never called" "[ $rc -eq 0 ] && grep -q 'cannot reset the web opcache' $T/s9d.log && [ ! -s $T/curl.log ]"
 check "no WP_HOME: no probe file written" "[ -z \"\$(ls $BASE/releases/R23/web/zz-opcache-*.php 2>/dev/null)\" ]"
+
+echo "=== Scenario 9h: what the web PHP reports, the extra probe hits, and the fresh render check (TPL-172) ==="
+mkmanifest() { # <release> <css file>: a Vite manifest naming the stylesheet
+  mkdir -p $BASE/releases/$1/web/app/themes/sage/public/build
+  printf '{\n  "resources/css/app.css": {\n    "file": "assets/%s",\n    "src": "resources/css/app.css",\n    "isEntry": true\n  }\n}\n' "$2" > $BASE/releases/$1/web/app/themes/sage/public/build/manifest.json
+}
+resetenv() { echo "WP_ENV=production" > $BASE/shared/.env; echo "WP_HOME=https://example.test/" >> $BASE/shared/.env; }
+resetenv
+rm -f $T/page-css $T/page-css-then $T/page-fail
+
+# the diagnostics line, and the six more probe hits
+: > $T/curl.log; echo okinfo > $T/curl-mode; mkrelease R30
+OPCACHE_EXTRA_HITS=6 bash $S $BASE R30 5 >$T/s9h1.log 2>&1; rc=$?
+check "diagnostics: the pool line is logged" "grep -q '^Web PHP: pool=111 reset=true sapi=fpm-fcgi' $T/s9h1.log && grep -q 'revalidate_path=0' $T/s9h1.log"
+check "extra hits: one probe plus six more" "[ \$(grep -c 'zz-opcache.*n=' $T/curl.log) -eq 6 ]"
+check "extra hits: one opcache instance reported" "grep -q 'one opcache instance answered 7 probe requests' $T/s9h1.log"
+: > $T/curl.log; echo twopools > $T/curl-mode; mkrelease R31
+OPCACHE_EXTRA_HITS=6 bash $S $BASE R31 5 >$T/s9h2.log 2>&1
+check "two pools answering: counted and warned" "grep -q 'WARN: 2 different PHP opcache instances answered the probe' $T/s9h2.log"
+: > $T/curl.log; echo resetfalse > $T/curl-mode; mkrelease R32
+bash $S $BASE R32 5 >$T/s9h3.log 2>&1
+check "opcache_reset() returning false: warned that the reset did NOT happen" "grep -q 'opcache_reset() returned false in the web pool' $T/s9h3.log"
+
+# the fresh render check
+echo ok > $T/curl-mode
+: > $T/curl.log; mkrelease R33; mkmanifest R33 app-NEW.css; echo app-NEW.css > $T/page-css
+bash $S $BASE R33 5 >$T/s9i1.log 2>&1; rc=$?
+check "fresh render: page links the manifest's stylesheet: exit 0 and says so" "[ $rc -eq 0 ] && grep -q 'Fresh render check: the uncached home page links app-NEW.css, as this release' $T/s9i1.log"
+check "fresh render: the page was requested with a one-off query string" "grep -Eq '^https://example.test/\?pkde-fresh-render=[0-9a-f]{32}-1\$' $T/curl.log"
+
+: > $T/curl.log; mkrelease R34; mkmanifest R34 app-NEW.css; echo app-OLD.css > $T/page-css
+bash $S $BASE R34 5 >$T/s9i2.log 2>&1; rc=$?
+check "stale render: the run ends with exit 3" "[ $rc -eq 3 ]"
+check "stale render: the release stays active" "[ \"\$(readlink $BASE/current)\" = $BASE/releases/R34 ]"
+check "stale render: STALE RELEASE block names both stylesheets" "grep -q 'STALE RELEASE: an uncached page of https://example.test still links app-OLD.css, but release R34 names app-NEW.css' $T/s9i2.log"
+check "stale render: the reset was requested again before giving up (3 times)" "[ \$(grep -c 'again=' $T/curl.log) -eq 3 ]"
+check "stale render: four page requests" "[ \$(grep -c 'pkde-fresh-render' $T/curl.log) -eq 4 ]"
+check "stale render: the post steps still ran" "grep -q 'post steps done' $T/s9i2.log"
+check "stale render: the marker is gone and the probe file removed" "[ ! -e $BASE/shared/.fresh-render-failed ] && [ -z \"\$(ls $BASE/releases/R34/web/zz-opcache-*.php 2>/dev/null)\" ]"
+
+: > $T/curl.log; mkrelease R35; mkmanifest R35 app-NEW.css; echo app-OLD.css > $T/page-css; echo app-NEW.css > $T/page-css-then
+bash $S $BASE R35 5 >$T/s9i3.log 2>&1; rc=$?
+check "stale then fresh after another reset: exit 0 and the success line" "[ $rc -eq 0 ] && grep -q 'links app-NEW.css, as this release' $T/s9i3.log && grep -q 'resetting the web opcache again' $T/s9i3.log"
+rm -f $T/page-css-then
+
+resetenv; echo "PKDE_FRESH_RENDER_CHECK=warn" >> $BASE/shared/.env
+: > $T/curl.log; mkrelease R36; mkmanifest R36 app-NEW.css; echo app-OLD.css > $T/page-css
+bash $S $BASE R36 5 >$T/s9i4.log 2>&1; rc=$?
+check "warn mode: a stale render warns and exits 0" "[ $rc -eq 0 ] && grep -q 'STALE RELEASE' $T/s9i4.log"
+resetenv; echo "PKDE_FRESH_RENDER_CHECK=off" >> $BASE/shared/.env
+: > $T/curl.log; mkrelease R37; mkmanifest R37 app-NEW.css
+bash $S $BASE R37 5 >$T/s9i5.log 2>&1; rc=$?
+check "off: no page request, exit 0" "[ $rc -eq 0 ] && grep -q 'Fresh render check: off' $T/s9i5.log && [ \$(grep -c 'pkde-fresh-render' $T/curl.log) -eq 0 ]"
+
+resetenv
+: > $T/curl.log; mkrelease R38; mkmanifest R38 app-NEW.css; touch $T/page-fail
+bash $S $BASE R38 5 >$T/s9i6.log 2>&1; rc=$?
+check "page cannot be fetched (401): not done, nothing guessed, exit 0" "[ $rc -eq 0 ] && grep -q 'Fresh render check: not done, the home page could not be fetched' $T/s9i6.log"
+rm -f $T/page-fail
+: > $T/curl.log; mkrelease R39
+bash $S $BASE R39 5 >$T/s9i7.log 2>&1; rc=$?
+check "no Vite manifest in the release: skipped, exit 0" "[ $rc -eq 0 ] && grep -q 'Fresh render check: skipped' $T/s9i7.log"
+: > $T/curl.log; mkrelease R40; mkmanifest R40 app-NEW.css; echo > $T/page-css
+bash $S $BASE R40 5 >$T/s9i8.log 2>&1; rc=$?
+check "page links no stylesheet: not done, exit 0" "[ $rc -eq 0 ] && grep -q 'links no app-<hash>.css stylesheet' $T/s9i8.log"
+
+# the two execs of the workflow: activate writes the marker, post fails the run
+: > $T/curl.log; mkrelease R41; mkmanifest R41 app-NEW.css; echo app-OLD.css > $T/page-css
+bash $S $BASE R41 5 activate >$T/s9i9.log 2>&1; rc1=$?
+check "split exec: activate itself exits 0 and leaves the marker" "[ $rc1 -eq 0 ] && [ -f $BASE/shared/.fresh-render-failed ]"
+bash $S $BASE R41 5 post >$T/s9i10.log 2>&1; rc2=$?
+check "split exec: post exits 3 and says why, and removes the marker" "[ $rc2 -eq 3 ] && grep -q 'ERROR: release R41 is activated but the web PHP still renders the PREVIOUS release' $T/s9i10.log && [ ! -e $BASE/shared/.fresh-render-failed ]"
+rm -f $T/page-css
+export OPCACHE_EXTRA_HITS=0 PKDE_FRESH_RENDER_PAUSE=0
+echo "WP_ENV=production" > $BASE/shared/.env
+
+echo "=== Scenario 9j: opcache.revalidate_path=1 in the release's .user.ini (TPL-172) ==="
+resetenv
+: > $T/curl.log; mkrelease R50
+bash $S $BASE R50 5 >$T/s9j1.log 2>&1; rc=$?
+check "revalidate_path: exit 0 and said so" "[ $rc -eq 0 ] && grep -q 'OPcache: opcache.revalidate_path=1 set in web/.user.ini' $T/s9j1.log"
+check "revalidate_path: the release's .user.ini holds the marked block" "grep -qx '; pkde opcache' $BASE/releases/R50/web/.user.ini && grep -qx 'opcache.revalidate_path = 1' $BASE/releases/R50/web/.user.ini && grep -qx '; END pkde opcache' $BASE/releases/R50/web/.user.ini"
+check "revalidate_path: written before the symlink switch is visible (the file is in the release current points at)" "[ -f $BASE/current/web/.user.ini ]"
+# idempotent, keeps other lines, and the Wordfence block and ours live side by side
+printf 'memory_limit = 256M\n' > $BASE/releases/R51.pre 2>/dev/null; rm -f $BASE/releases/R51.pre
+mkrelease R51; printf 'memory_limit = 256M\n' > $BASE/releases/R51/web/.user.ini
+bash $S $BASE R51 5 >$T/s9j2.log 2>&1
+bash $S $BASE R51 5 >$T/s9j3.log 2>&1
+check "revalidate_path: other lines are kept and the block is not duplicated by a second run" "grep -qx 'memory_limit = 256M' $BASE/releases/R51/web/.user.ini && [ \$(grep -c '^; pkde opcache\$' $BASE/releases/R51/web/.user.ini) -eq 1 ]"
+resetenv; echo "WORDFENCE_EXTENDED_PROTECTION=1" >> $BASE/shared/.env
+mkrelease R52; mkdir -p $BASE/releases/R52/web/app/plugins/wordfence/waf; echo "<?php" > $BASE/releases/R52/web/app/plugins/wordfence/waf/bootstrap.php
+mkdir -p $BASE/releases/R52/bin/deploy; cp $(dirname $S)/waf-prepend.sh $BASE/releases/R52/bin/deploy/waf-prepend.sh
+bash $S $BASE R52 5 >$T/s9j4.log 2>&1; rc=$?
+check "with Extended Protection on: both blocks are in the same .user.ini" "[ $rc -eq 0 ] && grep -qx '; pkde opcache' $BASE/releases/R52/web/.user.ini && grep -qx '; Wordfence WAF' $BASE/releases/R52/web/.user.ini && grep -q \"^auto_prepend_file = '\" $BASE/releases/R52/web/.user.ini"
+resetenv; echo "PKDE_OPCACHE_REVALIDATE_PATH=0" >> $BASE/shared/.env
+mkrelease R53
+bash $S $BASE R53 5 >$T/s9j5.log 2>&1; rc=$?
+check "opt out (PKDE_OPCACHE_REVALIDATE_PATH=0): no .user.ini written, said so" "[ $rc -eq 0 ] && [ ! -e $BASE/releases/R53/web/.user.ini ] && grep -q 'revalidate_path block off' $T/s9j5.log"
+echo "WP_ENV=production" > $BASE/shared/.env
 
 echo "=== Scenario 10: the Asset Cache block is added once and re-added when W3TC drops it ==="
 check "block present after the earlier deploys, exactly once" "[ \$(grep -c '# BEGIN Asset Cache' $BASE/shared/.htaccess) -eq 1 ] && grep -q 'public, max-age=31536000, immutable' $BASE/shared/.htaccess"
