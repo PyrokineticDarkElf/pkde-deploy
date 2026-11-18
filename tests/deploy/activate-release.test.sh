@@ -172,9 +172,9 @@ case "\$url" in *pkde-fresh-render*)
 esac
 nprobe=\$(grep -c 'zz-opcache' "$T/curl.log")
 case "\$(cat "$T/curl-mode")" in
-  okinfo) printf 'ok %s\\npool=111 reset=true sapi=fpm-fcgi php=8.3.1 host=web1 revalidate_path=0 revalidate_freq=10 validate_timestamps=1 restrict_api=- realpath_ttl=120\\n' "\$(basename "\$(readlink -f "$BASE/current")")" ;;
-  twopools) printf 'ok %s\\npool=%s reset=true sapi=fpm-fcgi php=8.3.1 host=web1 revalidate_path=0 revalidate_freq=10 validate_timestamps=1 restrict_api=- realpath_ttl=120\\n' "\$(basename "\$(readlink -f "$BASE/current")")" "\$((111 + (nprobe % 2) * 111))" ;;
-  resetfalse) printf 'ok %s\\npool=111 reset=false sapi=fpm-fcgi php=8.3.1 host=web1 revalidate_path=0 revalidate_freq=10 validate_timestamps=1 restrict_api=/x realpath_ttl=120\\n' "\$(basename "\$(readlink -f "$BASE/current")")" ;;
+  okinfo) printf 'ok %s\\npool=111 pid=%s reset=true sapi=fpm-fcgi php=8.3.1 host=web1 revalidate_path=0 revalidate_freq=10 validate_timestamps=1 restrict_api=- realpath_ttl=120\\n' "\$(basename "\$(readlink -f "$BASE/current")")" "\$\$" ;;
+  twopools) printf 'ok %s\\npool=%s pid=%s reset=true sapi=fpm-fcgi php=8.3.1 host=web1 revalidate_path=0 revalidate_freq=10 validate_timestamps=1 restrict_api=- realpath_ttl=120\\n' "\$(basename "\$(readlink -f "$BASE/current")")" "\$((111 + (\$\$ % 2) * 111))" "\$\$" ;;
+  resetfalse) printf 'ok %s\\npool=111 pid=%s reset=false sapi=fpm-fcgi php=8.3.1 host=web1 revalidate_path=0 revalidate_freq=10 validate_timestamps=1 restrict_api=/x realpath_ttl=120\\n' "\$(basename "\$(readlink -f "$BASE/current")")" "\$\$" ;;
   ok) echo "ok \$(basename "\$(readlink -f "$BASE/current")")" ;;
   wrongrel) echo "ok 19990101000000" ;;
   fail) echo "curl: (22) The requested URL returned error: 403" >&2; exit 22 ;;
@@ -244,11 +244,11 @@ rm -f $T/page-css $T/page-css-then $T/page-fail
 # the diagnostics line, and the six more probe hits
 : > $T/curl.log; echo okinfo > $T/curl-mode; mkrelease R30
 OPCACHE_EXTRA_HITS=6 bash $S $BASE R30 5 >$T/s9h1.log 2>&1; rc=$?
-check "diagnostics: the pool line is logged" "grep -q '^Web PHP: pool=111 reset=true sapi=fpm-fcgi' $T/s9h1.log && grep -q 'revalidate_path=0' $T/s9h1.log"
+check "diagnostics: the pool line is logged" "grep -q '^Web PHP: pool=111 pid=[0-9]* reset=true sapi=fpm-fcgi' $T/s9h1.log && grep -q 'revalidate_path=0' $T/s9h1.log"
 check "extra hits: one probe plus six more" "[ \$(grep -c 'zz-opcache.*n=' $T/curl.log) -eq 6 ]"
-check "extra hits: one opcache instance reported" "grep -q 'one opcache instance answered 7 probe requests' $T/s9h1.log"
+check "extra hits: the parallel batch reached distinct workers in one instance" "grep -q '6 parallel probe requests reached 6 distinct PHP workers in 1 opcache instance' $T/s9h1.log"
 : > $T/curl.log; echo twopools > $T/curl-mode; mkrelease R31
-OPCACHE_EXTRA_HITS=6 bash $S $BASE R31 5 >$T/s9h2.log 2>&1
+OPCACHE_EXTRA_HITS=12 bash $S $BASE R31 5 >$T/s9h2.log 2>&1
 check "two pools answering: counted and warned" "grep -q 'WARN: 2 different PHP opcache instances answered the probe' $T/s9h2.log"
 : > $T/curl.log; echo resetfalse > $T/curl-mode; mkrelease R32
 bash $S $BASE R32 5 >$T/s9h3.log 2>&1

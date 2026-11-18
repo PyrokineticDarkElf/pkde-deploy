@@ -261,10 +261,39 @@ echo "Activated release $RELEASE -> $CURRENT_LINK"
 # What the probe tells the log (TPL-172, tcs staging, 2026-11-18: the probe answered "serves release X" and every uncached page still came from the
 # PREVIOUS release for 6+ minutes): the answer's first line is "ok <release>"; the second line says what the pool that answered looks like: whether
 # opcache_reset() returned true (it returns false and the page still prints "ok" when opcache.restrict_api blocks it), the opcache instance (its start
-# time: one value per FPM pool), the host, and the settings that decide how stale code survives. The probe is requested several times (OPCACHE_EXTRA_HITS,
-# default 6): a hosting setup with more than one PHP pool behind the same site answers from different pools, each gets the reset, and the log counts the
-# distinct instances. Then the FRESH RENDER CHECK (below) proves what the reset is for. Failure to reset only warns; a stale render fails the run.
+# time: one value per FPM pool), the worker's pid, the host, and the settings that decide how stale code survives. The probe also clears the worker's
+# realpath cache (opcache_reset() does not) and is then requested OPCACHE_EXTRA_HITS times (default 16) in parallel (hit_all_workers), so that every
+# worker of the pool gets both. Then the FRESH RENDER CHECK (below) proves what the reset is for. Failure to reset only warns; a stale render fails the run.
 rm -f "$OPCACHE_STALE_MARKER"
+# One PHP-FPM worker keeps its OWN realpath cache for as long as realpath_cache_ttl says (20i: long enough that bb and tcs staging served the previous release for
+# 6+ minutes; TPL-172) and opcache_reset() does not clear it, only clearstatcache(true) run IN that worker does. Sequential requests all land on the same idle
+# worker, so the probe is requested OPCACHE_EXTRA_HITS times (default 16) IN PARALLEL with ?hold=1, which makes each request sleep for a moment so that the
+# requests spread over distinct workers; every one resets the opcache and clears its realpath cache. The distinct worker pids and opcache instances are counted.
+# When every parallel request got a worker of its own there may be more workers than requests: the log says so (raise OPCACHE_EXTRA_HITS).
+hit_all_workers() {
+    local url="$1" token="$2" hits="${OPCACHE_EXTRA_HITS:-16}" i out pids pools w n
+    [ "$hits" -gt 0 ] 2>/dev/null || return 0
+    out="$(mktemp -d)" || return 0
+    local bg=""
+    for i in $(seq 1 "$hits"); do
+        ( curl -fsSL --max-time 30 "$url/zz-opcache-$token.php?hold=1&n=$i" > "$out/$i" 2>/dev/null ) &
+        bg="$bg $!"
+    done
+    # wait for OUR requests only: a bare `wait` would also wait for any other background job of this run
+    # shellcheck disable=SC2086
+    wait $bg
+    pids="$(cat "$out"/* 2>/dev/null | sed -n 's/^pool=[^ ]* pid=\([0-9]*\) .*/\1/p' | sort -u)"
+    pools="$(cat "$out"/* 2>/dev/null | sed -n 's/^pool=\([^ ]*\) .*/\1/p' | sort -u)"
+    rm -rf "$out"
+    w="$(printf '%s\n' "$pids" | grep -c .)" || w=0
+    n="$(printf '%s\n' "$pools" | grep -c .)" || n=0
+    if [ "$w" -gt 0 ]; then
+        echo "Web PHP: $hits parallel probe requests reached $w distinct PHP workers in $n opcache instance(s); each reset the opcache and cleared its realpath cache"
+        [ "$w" -ge "$hits" ] && echo "WARN: every parallel probe request got a worker of its own: the pool may have more than $hits workers, and a worker that answered none keeps its realpath cache (raise OPCACHE_EXTRA_HITS)." >&2
+    fi
+    [ "$n" -gt 1 ] && echo "WARN: $n different PHP opcache instances answered the probe (more than one pool or node serves this site); each answering one was reset, a pool that answered no request was not." >&2
+    return 0
+}
 reset_web_opcache() {
     local url token answer first
     url="$(sed -n 's/^WP_HOME=//p' "$SHARED_DIR/.env" 2>/dev/null | tr -d "\"'\r" | head -1)" || url=""
@@ -277,7 +306,7 @@ reset_web_opcache() {
 
     token="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
     OPCACHE_PROBE_FILE="$RELEASE_DIR/web/zz-opcache-$token.php"
-    printf '%s\n' '<?php $r = function_exists("opcache_reset") ? @opcache_reset() : null; clearstatcache(true); $s = function_exists("opcache_get_status") ? @opcache_get_status(false) : null; echo "ok ", basename(dirname(realpath(__DIR__))), "\n"; echo "pool=", $s ? ($s["opcache_statistics"]["start_time"] ?? "?") : "none", " reset=", var_export($r, true), " sapi=", PHP_SAPI, " php=", PHP_VERSION, " host=", php_uname("n"), " revalidate_path=", ini_get("opcache.revalidate_path"), " revalidate_freq=", ini_get("opcache.revalidate_freq"), " validate_timestamps=", ini_get("opcache.validate_timestamps"), " restrict_api=", ini_get("opcache.restrict_api") ?: "-", " realpath_ttl=", ini_get("realpath_cache_ttl"), "\n";' > "$OPCACHE_PROBE_FILE"
+    printf '%s\n' '<?php if (isset($_GET["hold"])) { usleep(450000); } $r = function_exists("opcache_reset") ? @opcache_reset() : null; clearstatcache(true); $s = function_exists("opcache_get_status") ? @opcache_get_status(false) : null; echo "ok ", basename(dirname(realpath(__DIR__))), "\n"; echo "pool=", $s ? ($s["opcache_statistics"]["start_time"] ?? "?") : "none", " pid=", getmypid(), " reset=", var_export($r, true), " sapi=", PHP_SAPI, " php=", PHP_VERSION, " host=", php_uname("n"), " revalidate_path=", ini_get("opcache.revalidate_path"), " revalidate_freq=", ini_get("opcache.revalidate_freq"), " validate_timestamps=", ini_get("opcache.validate_timestamps"), " restrict_api=", ini_get("opcache.restrict_api") ?: "-", " realpath_ttl=", ini_get("realpath_cache_ttl"), "\n";' > "$OPCACHE_PROBE_FILE"
 
     # The 20i web node can lag a few seconds in resolving the new `current`, and answers 404 for the probe until it does
     # (bp BP-46). Retry on 404 only (default: every 5s, 19 tries, about 90s); the probe file stays in place meanwhile.
@@ -301,18 +330,9 @@ reset_web_opcache() {
         local info="${answer#*$'\n'}"
         [ "$info" != "$answer" ] && echo "Web PHP: ${info:0:400}"
         case "$info" in *"reset=false"*) echo "WARN: opcache_reset() returned false in the web pool (opcache.restrict_api?): the reset did NOT happen there." >&2 ;; esac
-        # more hits: every PHP pool or node that answers gets its own reset, and the distinct opcache instances are counted
-        local hits="${OPCACHE_EXTRA_HITS:-6}" i pools="" p one
-        p="$(printf '%s\n' "$info" | sed -n 's/^pool=\([^ ]*\).*/\1/p')"; pools="$p"
-        for i in $(seq 1 "$hits"); do
-            if one="$(curl -fsSL --max-time 30 "$url/zz-opcache-$token.php?n=$i" 2>/dev/null)"; then
-                p="$(printf '%s\n' "$one" | sed -n 's/^pool=\([^ ]*\).*/\1/p')"; pools="$pools $p"
-            fi
-        done
-        local distinct
-        distinct="$(printf '%s\n' $pools | sort -u | grep -c .)" || distinct=0
-        [ "$distinct" -gt 1 ] && echo "WARN: $distinct different PHP opcache instances answered the probe (more than one pool or node serves this site); each one was reset by its own probe request, but a pool that answered no request was not." >&2
-        [ "$distinct" -eq 1 ] && echo "Web PHP: one opcache instance answered $((hits + 1)) probe requests"
+        # every PHP worker gets the reset AND clears its own realpath cache (opcache_reset() alone leaves that cache, and a worker whose cache says that `current` is the
+        # old release keeps running it): see hit_all_workers
+        hit_all_workers "$url" "$token"
         verify_fresh_render "$url" "$token"
         rm -f "$OPCACHE_PROBE_FILE"; OPCACHE_PROBE_FILE=""
     else
@@ -364,6 +384,7 @@ verify_fresh_render() {
         if [ "$attempt" -ge "$tries" ]; then break; fi
         echo "WARN: fresh render check: the page links $served but this release's manifest names $expected; resetting the web opcache again (attempt $attempt of $tries)" >&2
         curl -fsSL --max-time 30 "$url/zz-opcache-$token.php?again=$attempt" >/dev/null 2>&1 || true
+        hit_all_workers "$url" "$token"
         sleep "${PKDE_FRESH_RENDER_PAUSE:-5}"
         attempt=$((attempt + 1))
     done
