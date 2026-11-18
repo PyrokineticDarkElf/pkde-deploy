@@ -12,7 +12,7 @@ function pkdeGoodFacts(): array
         'wordfence' => array_merge(pkde_drift_wordfence_standard(), ['alertEmails' => 'office@acme-widgets.co.uk']),
         'turnstile' => ['appearance' => 'always', 'login' => '1', 'cf7_all' => '1', 'tested' => 'yes', 'reset' => '', 'keys_present' => true],
         'hide_login' => ['active' => true, 'slug' => 'staff-entrance', 'managed' => true],
-        'w3tc' => ['settings' => pkde_w3tc_standard('https://example.test/sitemap_index.xml'), 'reject_cookies' => ['woocommerce_items_in_cart', 'wp_woocommerce_session_', 'other'], 'expected_sitemap' => 'https://example.test/sitemap_index.xml'],
+        'w3tc' => ['settings' => pkde_w3tc_standard('https://example.test/sitemap_index.xml'), 'reject_cookies' => ['woocommerce_items_in_cart', 'wp_woocommerce_session_', 'other'], 'reject_uris' => pkde_w3tc_reject_uris(), 'expected_sitemap' => 'https://example.test/sitemap_index.xml'],
         'rankmath' => ['skip' => true, 'connected' => false],
         'woocommerce_active' => true,
         'cf7_forms' => [['id' => 5, 'title' => 'Contact form', 'headers' => "Reply-To: [your-email]\nCc: [_site_admin_email]", 'has_subject' => false, 'subject' => PKDE_DRIFT_SUBJECT, 'mail2_active' => false, 'mail2_subject' => '']],
@@ -78,6 +78,7 @@ it('fails each deviation on its own check', function (callable $break, string $c
     'w3tc preloader limit unset' => [function (&$f) {
         unset($f['w3tc']['settings']['pgcache.prime.limit']);
     }, 'W3TC pgcache.prime.limit'],
+    'w3tc sitemap not rejected' => [fn(&$f) => $f['w3tc']['reject_uris'] = ['robots\\.txt'], 'W3TC page cache never caches robots.txt or the sitemaps'],
     'w3tc shop cookies missing' => [fn(&$f) => $f['w3tc']['reject_cookies'] = ['other'], 'W3TC page cache skips the WooCommerce cookies'],
     'placeholder admin email' => [fn(&$f) => $f['admin_email'] = 'admin@example.com', 'admin_email is not a placeholder'],
     'default tagline' => [fn(&$f) => $f['blogdescription'] = 'Just another WordPress site', 'blogdescription is set and not the WordPress default'],
@@ -574,4 +575,69 @@ it('checks Wordfence Extended Protection only for a site that opted in, and fail
         $broken['waf_prepend'][$key] = $value;
         expect(pkdeStatuses($broken)[$row])->toBe('FAIL');
     }
+});
+
+// Search engine signals as the site answers them (WP-91): the probe rows.
+function pkdeSeoProbe(array $over = []): array
+{
+    return array_replace_recursive([
+        'home' => ['status' => 200, 'x_robots' => '', 'body' => ''],
+        'robots_txt' => ['status' => 200, 'x_robots' => '', 'body' => "User-agent: *\nDisallow: /wp/wp-admin/\nSitemap: https://example.test/sitemap_index.xml\n"],
+        'static' => ['status' => 200, 'x_robots' => '', 'body' => ''],
+        'faceted' => ['status' => 200, 'x_robots' => 'noindex, follow', 'meta_noindex' => true],
+        'sitemap' => ['status' => 200, 'noindex' => []],
+    ], $over);
+}
+
+it('passes the production search engine signals and fails a staging leak or an indexable faceted URL', function () {
+    $facts = pkdeGoodFacts();
+    $facts['wp_env'] = 'production';
+    $facts['seo_probe'] = pkdeSeoProbe();
+    $s = pkdeStatuses($facts);
+
+    expect($s['Production homepage is indexable (no noindex in X-Robots-Tag)'])->toBe('PASS')
+        ->and($s['Production robots.txt does not disallow the whole site'])->toBe('PASS')
+        ->and($s['Faceted shop URL (?orderby=) is noindex in the X-Robots-Tag header'])->toBe('PASS')
+        ->and($s['Faceted shop URL (?orderby=) is noindex in the robots meta tag'])->toBe('PASS')
+        ->and($s['Sitemap lists no noindex URL (cart, checkout, my-account, query-string URLs)'])->toBe('PASS');
+
+    $facts['seo_probe'] = pkdeSeoProbe(['home' => ['x_robots' => 'noindex, nofollow'], 'robots_txt' => ['body' => "User-agent: *\nDisallow: /\n"], 'faceted' => ['x_robots' => '', 'meta_noindex' => false], 'sitemap' => ['noindex' => ['cart', 'a query-string URL']]]);
+    $s = pkdeStatuses($facts);
+
+    expect($s['Production homepage is indexable (no noindex in X-Robots-Tag)'])->toBe('FAIL')
+        ->and($s['Production robots.txt does not disallow the whole site'])->toBe('FAIL')
+        ->and($s['Faceted shop URL (?orderby=) is noindex in the X-Robots-Tag header'])->toBe('FAIL')
+        ->and($s['Faceted shop URL (?orderby=) is noindex in the robots meta tag'])->toBe('FAIL')
+        ->and($s['Sitemap lists no noindex URL (cart, checkout, my-account, query-string URLs)'])->toBe('FAIL');
+});
+
+it('holds staging to the safety net: header on pages and files, robots.txt disallow without a sitemap', function () {
+    $facts = pkdeGoodFacts();
+    $facts['env'] = 'staging';
+    $facts['wp_env'] = 'staging';
+    $facts['disallow_indexing'] = true;
+    $facts['seo_probe'] = pkdeSeoProbe(['home' => ['x_robots' => 'noindex, nofollow'], 'static' => ['x_robots' => 'noindex, nofollow'], 'robots_txt' => ['body' => "User-agent: *\nDisallow: /\n"]]);
+    $s = pkdeStatuses($facts);
+
+    expect($s['Staging: pages carry X-Robots-Tag noindex, nofollow (platform module staging-safety-net)'])->toBe('PASS')
+        ->and($s['Staging: static files carry X-Robots-Tag noindex, nofollow (.htaccess block Staging Noindex)'])->toBe('PASS')
+        ->and($s['Staging: robots.txt disallows everything and names no sitemap'])->toBe('PASS');
+
+    $facts['seo_probe'] = pkdeSeoProbe(['home' => ['x_robots' => 'noindex'], 'static' => ['x_robots' => ''], 'robots_txt' => ['body' => "User-agent: *\nDisallow: /\nSitemap: https://example.test/sitemap_index.xml\n"]]);
+    $s = pkdeStatuses($facts);
+
+    expect($s['Staging: pages carry X-Robots-Tag noindex, nofollow (platform module staging-safety-net)'])->toBe('FAIL')
+        ->and($s['Staging: static files carry X-Robots-Tag noindex, nofollow (.htaccess block Staging Noindex)'])->toBe('FAIL')
+        ->and($s['Staging: robots.txt disallows everything and names no sitemap'])->toBe('FAIL');
+});
+
+it('skips a probe that the site did not answer with 200 instead of failing it', function () {
+    $facts = pkdeGoodFacts();
+    $facts['wp_env'] = 'production';
+    $facts['seo_probe'] = pkdeSeoProbe(['home' => ['status' => 401], 'sitemap' => ['status' => 0]]);
+    $s = pkdeStatuses($facts);
+
+    expect($s['Production homepage is indexable'])->toBe('SKIP')
+        ->and($s['Sitemap lists no noindex URL'])->toBe('SKIP')
+        ->and(array_keys($s, 'FAIL'))->toBe([]);
 });

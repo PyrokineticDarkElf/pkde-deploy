@@ -411,6 +411,7 @@ check "W3TC active but no preloader sitemap: nothing is primed, and it says so" 
 touch $T/w3tc-sitemap; mkrelease W3; : > $T/php83.log
 bash $S $BASE W3 5 >$T/s13c.log 2>&1
 check "W3TC active with a sitemap: pgcache_prime --start=1 --limit=30 runs after the flushes" "grep -q 'w3-total-cache pgcache_prime --start=1 --limit=30' $T/php83.log && [ \$(grep -n 'rewrite flush\|pgcache_prime' $T/php83.log | cut -d: -f1 | tr '\n' ' ' | awk '{print (\$1<\$2) ? \"ordered\" : \"wrong\"}') = ordered ]"
+check "W3TC active: the page cache is purged (flush posts) after the flushes and before the warm-up (WP-91)" "grep -q 'w3-total-cache flush posts' $T/php83.log && [ \$(grep -n 'rewrite flush\|w3-total-cache flush posts\|pgcache_prime' $T/php83.log | cut -d: -f1 | tr '\n' ' ' | awk '{print (\$1<\$2 && \$2<\$3) ? \"ordered\" : \"wrong\"}') = ordered ]"
 mkrelease W4; : > $T/php83.log
 CACHE_WARM_LIMIT=7 bash $S $BASE W4 5 >$T/s13d.log 2>&1
 check "CACHE_WARM_LIMIT=7 is used" "grep -q 'pgcache_prime --start=1 --limit=7' $T/php83.log"
@@ -489,6 +490,29 @@ mkrelease WC3
 printf 'WP_ENV=production\n' > $BASE/shared/.env
 bash $S $BASE WC3 5 >$T/s15c.log 2>&1
 check "no W3TC plugin: no warning" "! grep -q 'uses W3 Total Cache' $T/s15c.log"
+BASE=$OLD_BASE
+
+# 16. Staging Noindex (WP-91, TPL-176): X-Robots-Tag for static files, where WP_ENV is not production; removed where it is.
+OLD_BASE=$BASE
+mkrelease SN1; printf 'WP_ENV=production\n' > $BASE/shared/.env
+bash $S $BASE SN1 5 >$T/s16a.log 2>&1
+check "production: no Staging Noindex block" "! grep -q 'Staging Noindex' $BASE/shared/.htaccess"
+mkrelease SN2; printf 'WP_ENV=staging\n' > $BASE/shared/.env
+bash $S $BASE SN2 5 >$T/s16b.log 2>&1; rc=$?
+check "staging: exit 0 and the block is added with the noindex header" "[ $rc -eq 0 ] && grep -q 'BEGIN Staging Noindex' $BASE/shared/.htaccess && grep -qF 'Header set X-Robots-Tag \"noindex, nofollow\"' $BASE/shared/.htaccess"
+mkrelease SN3
+bash $S $BASE SN3 5 >$T/s16c.log 2>&1
+check "staging, next release: the block is there exactly once" "[ \$(grep -c 'BEGIN Staging Noindex' $BASE/shared/.htaccess) -eq 1 ] && ! grep -q 'Added the Staging Noindex' $T/s16c.log"
+awk '/# BEGIN Staging Noindex/{skip=1} !skip{print} /# END Staging Noindex/{skip=0}' $BASE/shared/.htaccess > $T/ht.nosn && cat $T/ht.nosn > $BASE/shared/.htaccess   # W3TC regenerated the file and dropped it
+mkrelease SN4
+bash $S $BASE SN4 5 >$T/s16d.log 2>&1
+check "staging: a dropped block is added again" "[ \$(grep -c 'BEGIN Staging Noindex' $BASE/shared/.htaccess) -eq 1 ]"
+mkrelease SN5; printf 'WP_ENV=development\n' > $BASE/shared/.env
+bash $S $BASE SN5 5 >$T/s16e.log 2>&1
+check "any other non-production WP_ENV also gets the block" "grep -q 'BEGIN Staging Noindex' $BASE/shared/.htaccess"
+mkrelease SN6; printf 'WP_ENV=production\n' > $BASE/shared/.env
+bash $S $BASE SN6 5 >$T/s16f.log 2>&1
+check "a staging .htaccess copied to production loses the block, and every other block stays" "! grep -q 'Staging Noindex' $BASE/shared/.htaccess && ! grep -q 'X-Robots-Tag' $BASE/shared/.htaccess && grep -q 'BEGIN WordPress' $BASE/shared/.htaccess && grep -q 'END XML-RPC Hardening' $BASE/shared/.htaccess && grep -q 'BEGIN Upload Cache' $BASE/shared/.htaccess"
 BASE=$OLD_BASE
 
 echo; echo "RESULT: $pass passed, $fail failed"; exit $fail

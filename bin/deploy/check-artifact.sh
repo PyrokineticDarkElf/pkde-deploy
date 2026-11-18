@@ -81,6 +81,7 @@ required=(
     bin/deploy/waf-prepend.sh
     bin/deploy/perf-probe.php
     bin/deploy/perf-probe.sh
+    bin/deploy/seo-sitemap-exclusions.php
     bin/deploy/wp.sh
     web/app/themes/sage/public/build/manifest.json
     web/app/themes/sage/vendor/autoload.php

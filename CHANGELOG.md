@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026.11.18
+
+Search engine safety (WP-91, TPL-176, 177, 178). **Adopt:** bump `pkde/deploy` and the workflow tags; each site then runs two things once (below).
+
+- **Staging Noindex block** in the shared `.htaccess`: `Header set X-Robots-Tag "noindex, nofollow"` for images and files, ADDED where the server `.env` has `WP_ENV` other than `production` and REMOVED where it is `production` or unset (a staging `.htaccess` copied to production loses it). Re-asserted every release. Tested in a Linux container (`activate-release.test.sh`, scenario 16: add, once, re-add after W3TC drops it, any non-production value, removal on production with every other block intact). Whether `mod_headers` is on at 20i is not proved: the drift row says.
+- **W3TC never caches `robots.txt` or sitemaps:** `w3tc-standard.php` has `pkde_w3tc_reject_uris()` (`robots\.txt`, `sitemap[^/]*\.(xml|xsl)`), `w3tc-settings.php` adds them to "Never cache the following pages", the drift check has the row "W3TC page cache never caches robots.txt or the sitemaps". Existing sites re-run `w3tc-settings.php` once, then `fix_environment`.
+- **The page cache is purged at every release:** `wp w3-total-cache flush posts` runs after the flushes and before the warm-up. The cache directory stays per release (a shared one would keep pages linking the previous release's asset hashes).
+- **`seo-sitemap-exclusions.php`** (shipped in the artifact): takes the WooCommerce cart, checkout and my-account pages out of Rank Math's sitemap and drops its cached sitemap files. `bin/setup` runs it for a new site; an existing site runs `bash bin/deploy/wp.sh eval-file bin/deploy/seo-sitemap-exclusions.php` once (staging, then production). Idempotent.
+- **New drift rows**, from requests the check makes to the site's own address (a probe that does not get 200 is a SKIP naming the status): production homepage has no noindex and its `robots.txt` is not `Disallow: /`; staging pages and a static file carry `noindex, nofollow` and its `robots.txt` names no sitemap; `?orderby=price` on the shop is noindex in the header AND the meta tag; the sitemap lists no cart, checkout, my-account or query-string URL.
+- Tests: deploy Pest 101, `activate-release.test.sh` 146 checks in a Linux container, assemble-artifact 9. The probe rows were run through `pkde_drift_collect()` on the template stack (WooCommerce, Rank Math), FAIL before the sitemap exclusion and PASS after. Not run on a real server.
+
 ## 2026.11.13.7
 
 Second fix for the stale release after a green deploy (TPL-172; bb and tcs staging, 2026-11-18: pages unstyled because the web PHP rendered the previous release's asset hashes, which 404 in the new docroot, while the cache primer's PHP saw the new release). **Adopt:** bump the package and the workflow tag; this replaces 2026.11.13.6.

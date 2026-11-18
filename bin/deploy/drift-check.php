@@ -212,6 +212,8 @@ function pkde_drift_evaluate(array $f): array
             $ok = is_bool($want) ? (bool) $got === $want && $got !== null : (string) $got === (string) $want;
             $cmp("W3TC $key", $ok, 'expected ' . $show($want) . ', got ' . $show($got), true);
         }
+        $uriMissing = array_diff(pkde_w3tc_reject_uris(), (array) ($w3['reject_uris'] ?? []));
+        $cmp('W3TC page cache never caches robots.txt or the sitemaps', $uriMissing === [], 'missing from Never cache the following pages: ' . implode(', ', $uriMissing) . ' (re-run bin/deploy/w3tc-settings.php, then fix_environment)', true);
         if (! empty($f['woocommerce_active'])) {
             // Default: the basket cookies skip the page cache. Opted in (pkde_cache_basket_visitors = 1, MGR-76): they must NOT, or the opt-in does nothing.
             if (! empty($f['cache_basket_visitors'])) {
@@ -288,6 +290,58 @@ function pkde_drift_evaluate(array $f): array
         if (array_key_exists('slug_equals_login', $aa)) {
             $same = (int) $aa['slug_equals_login'];
             $cmp('Author archive slug (user_nicename) differs from the login', $same === 0, $same . ' of ' . (int) ($aa['allowed_users'] ?? 0) . ' users with an allowed role have an archive slug equal to their login name (the URL gives the login away): change the nicename (names are not printed here)');
+        }
+    }
+
+    // Search engine signals as the site really answers them (WP-91): requests the check makes to the site's own address. A probe that did not get a 200
+    // (a staging gate, a firewall, no loopback DNS) is a SKIP naming what it got, never a FAIL.
+    if (is_array($f['seo_probe'] ?? null)) {
+        $sp = $f['seo_probe'];
+        $wpEnvSeo = (string) ($f['wp_env'] ?? ($dev ? 'development' : 'production'));
+        $noindex = fn(string $header) => stripos($header, 'noindex') !== false;
+        $reached = function (string $check, ?array $probe) use ($add): bool {
+            if ($probe === null) {
+                return false;
+            }
+            if ((int) ($probe['status'] ?? 0) !== 200) {
+                $add('SKIP', $check, 'the probe answered ' . ((int) ($probe['status'] ?? 0) ?: 'no response') . ' (a gate, a firewall or no loopback): check it from outside');
+
+                return false;
+            }
+
+            return true;
+        };
+
+        if ($wpEnvSeo === 'production') {
+            if ($reached('Production homepage is indexable', $sp['home'] ?? null)) {
+                $cmp('Production homepage is indexable (no noindex in X-Robots-Tag)', ! $noindex((string) $sp['home']['x_robots']), 'X-Robots-Tag says "' . $sp['home']['x_robots'] . '": a staging .htaccess block or module is live on production');
+            }
+            if ($reached('Production robots.txt', $sp['robots_txt'] ?? null)) {
+                $cmp('Production robots.txt does not disallow the whole site', preg_match('/^\s*Disallow:\s*\/\s*$/mi', (string) $sp['robots_txt']['body']) !== 1, 'robots.txt says Disallow: / (a staging copy served here?)');
+            }
+        } else {
+            if ($reached('Staging homepage carries X-Robots-Tag noindex, nofollow', $sp['home'] ?? null)) {
+                $cmp('Staging: pages carry X-Robots-Tag noindex, nofollow (platform module staging-safety-net)', $noindex((string) $sp['home']['x_robots']) && stripos((string) $sp['home']['x_robots'], 'nofollow') !== false, 'X-Robots-Tag is "' . $sp['home']['x_robots'] . '": bump pkde/platform to the release with the module staging-safety-net');
+            }
+            if ($reached('Staging static file carries X-Robots-Tag noindex, nofollow', $sp['static'] ?? null)) {
+                $cmp('Staging: static files carry X-Robots-Tag noindex, nofollow (.htaccess block Staging Noindex)', $noindex((string) $sp['static']['x_robots']), 'a static file answers without it: the next release adds the block (bin/deploy/activate-release.sh), or mod_headers is off');
+            }
+            if ($reached('Staging robots.txt', $sp['robots_txt'] ?? null)) {
+                $body = (string) $sp['robots_txt']['body'];
+                $cmp('Staging: robots.txt disallows everything and names no sitemap', preg_match('/^\s*Disallow:\s*\/\s*$/mi', $body) === 1 && stripos($body, 'sitemap:') === false, 'robots.txt is not "Disallow: /" alone');
+            }
+        }
+
+        // A filtered or sorted shop URL is noindex in the header AND in the meta tag (kit: app/woocommerce/filter-query.php).
+        if (is_array($sp['faceted'] ?? null) && $reached('Faceted shop URL is noindex', $sp['faceted'])) {
+            $cmp('Faceted shop URL (?orderby=) is noindex in the X-Robots-Tag header', $noindex((string) $sp['faceted']['x_robots']), 'no noindex in the header: bump pkde/sage-kit to the release with the faceted rule');
+            $cmp('Faceted shop URL (?orderby=) is noindex in the robots meta tag', (bool) ($sp['faceted']['meta_noindex'] ?? false), 'the meta robots tag does not say noindex (Rank Math printing index?)');
+        }
+
+        // The sitemap lists no URL that is noindex: the WooCommerce cart, checkout and my-account pages, and no URL with a query string.
+        if (is_array($sp['sitemap'] ?? null) && $reached('Sitemap lists no noindex URL', $sp['sitemap'])) {
+            $bad = (array) ($sp['sitemap']['noindex'] ?? []);
+            $cmp('Sitemap lists no noindex URL (cart, checkout, my-account, query-string URLs)', $bad === [], 'listed: ' . implode(', ', $bad) . ' (bin/setup excludes the shop pages; an existing site runs the line in the launch guide, "SEO at go-live")');
         }
     }
 
@@ -483,6 +537,66 @@ function pkde_drift_author_archive(): array
     return ['module' => $module, 'roles' => $roles, 'authors' => count($users), 'without_role' => $without, 'allowed_users' => count($allowed), 'slug_equals_login' => $same];
 }
 
+/** One GET to the site's own address: status, the X-Robots-Tag header (joined), the body. Never follows a redirect. */
+function pkde_drift_http(string $url): array
+{
+    $r = wp_remote_get($url, ['timeout' => 20, 'redirection' => 0, 'user-agent' => 'pkde-drift-check', 'headers' => ['Accept-Encoding' => 'identity']]);
+    if (is_wp_error($r)) {
+        return ['status' => 0, 'x_robots' => '', 'body' => ''];
+    }
+    $header = wp_remote_retrieve_header($r, 'x-robots-tag');
+
+    return ['status' => (int) wp_remote_retrieve_response_code($r), 'x_robots' => is_array($header) ? implode(', ', $header) : (string) $header, 'body' => (string) wp_remote_retrieve_body($r)];
+}
+
+/**
+ * What search engines are told, as the site answers its own address (WP-91): home, robots.txt, a static file, a faceted shop URL and the sitemap's
+ * entries. Counts and labels only; no body is kept except robots.txt (public) and the meta robots result.
+ */
+function pkde_drift_seo_probe(): array
+{
+    $out = ['home' => pkde_drift_http(home_url('/')), 'robots_txt' => pkde_drift_http(home_url('/robots.txt')), 'static' => pkde_drift_http(includes_url('images/blank.gif'))];
+    $out['home']['body'] = '';
+    $out['static']['body'] = '';
+
+    if (function_exists('wc_get_page_permalink') && ($shop = wc_get_page_permalink('shop'))) {
+        $p = pkde_drift_http(add_query_arg('orderby', 'price', $shop));
+        $out['faceted'] = ['status' => $p['status'], 'x_robots' => $p['x_robots'], 'meta_noindex' => preg_match('/<meta[^>]+name=["\']robots["\'][^>]+content=["\'][^"\']*noindex/i', $p['body']) === 1];
+    }
+
+    $index = pkde_drift_http(home_url('/sitemap_index.xml'));
+    $sitemap = ['status' => $index['status'], 'noindex' => []];
+    if ($index['status'] === 200) {
+        $locs = [];
+        preg_match_all('~<loc>\s*([^<\s]+)\s*</loc>~', $index['body'], $children);
+        foreach (array_slice($children[1], 0, 12) as $child) {
+            $c = pkde_drift_http(html_entity_decode($child));
+            if ($c['status'] === 200) {
+                preg_match_all('~<loc>\s*([^<\s]+)\s*</loc>~', $c['body'], $m);
+                $locs = array_merge($locs, array_slice($m[1], 0, 2000));
+            }
+        }
+        $pages = [];
+        foreach (['cart' => 'cart', 'checkout' => 'checkout', 'myaccount' => 'my-account'] as $key => $label) {
+            if (function_exists('wc_get_page_permalink') && ($link = wc_get_page_permalink($key))) {
+                $pages[untrailingslashit($link)] = $label;
+            }
+        }
+        foreach ($locs as $loc) {
+            $loc = html_entity_decode($loc);
+            if (isset($pages[untrailingslashit($loc)])) {
+                $sitemap['noindex'][] = $pages[untrailingslashit($loc)];
+            } elseif (str_contains($loc, '?')) {
+                $sitemap['noindex'][] = 'a query-string URL';
+            }
+        }
+        $sitemap['noindex'] = array_values(array_unique($sitemap['noindex']));
+    }
+    $out['sitemap'] = $sitemap;
+
+    return $out;
+}
+
 function pkde_drift_collect(): array
 {
     $wfKeys = array_merge(array_keys(pkde_drift_wordfence_standard()), ['alertEmails']);
@@ -518,7 +632,7 @@ function pkde_drift_collect(): array
     $w3 = null;
     if (class_exists('\\W3TC\\Dispatcher')) {
         $config = \W3TC\Dispatcher::config();
-        $w3 = ['settings' => [], 'reject_cookies' => (array) $config->get_array('pgcache.reject.cookie'), 'expected_sitemap' => home_url('/sitemap_index.xml')];
+        $w3 = ['settings' => [], 'reject_cookies' => (array) $config->get_array('pgcache.reject.cookie'), 'reject_uris' => (array) $config->get_array('pgcache.reject.uri'), 'expected_sitemap' => home_url('/sitemap_index.xml')];
         foreach (array_keys(pkde_w3tc_standard('')) as $k) {
             $w3['settings'][$k] = $config->get($k);
         }
@@ -568,6 +682,7 @@ function pkde_drift_collect(): array
         ],
         'relevanssi_indexed' => in_array('relevanssi', $active, true) ? pkde_drift_relevanssi_indexed() : null,
         'author_archive' => pkde_drift_author_archive(),
+        'seo_probe' => pkde_drift_seo_probe(),
         'rest_users' => pkde_drift_rest_users_probe(),
         'waf_prepend' => pkde_drift_waf_prepend_facts(),
         'woocommerce_active' => in_array('woocommerce', $active, true),

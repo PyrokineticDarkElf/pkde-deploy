@@ -38,6 +38,18 @@ function pkde_w3tc_standard(string $sitemap): array
 }
 
 /**
+ * Request paths the page cache never stores (WP-91, T-9): robots.txt and every sitemap file. W3TC matches each entry as a case-insensitive regular
+ * expression against the request URI (and writes it into the Enhanced-mode .htaccess rules), so a robots.txt cached from a staging copy, or a stale
+ * sitemap, cannot be served after go-live or after content changes.
+ *
+ * @return list<string>
+ */
+function pkde_w3tc_reject_uris(): array
+{
+    return ['robots\.txt', 'sitemap[^/]*\.(xml|xsl)'];
+}
+
+/**
  * Cookies that skip the page cache on a shop: by default a visitor with a basket is never served (or served to) a shared page. A site whose pages carry
  * nothing personal (kit 2026.11.06: the basket count is filled in by the browser, notices mark their page uncacheable; the audit in the kit's
  * docs/page-cache.md) opts in with the WordPress option `pkde_cache_basket_visitors` = 1, and then these cookies are NOT rejected (MGR-76).

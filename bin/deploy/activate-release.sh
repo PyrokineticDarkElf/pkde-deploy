@@ -541,6 +541,29 @@ EOF
     echo "Added the XML-RPC Hardening block to $HTACCESS"
 fi
 
+# Staging Noindex (WP-91, TPL-176): on a server whose .env says WP_ENV is not production, every response, static files included, carries
+# X-Robots-Tag: noindex, nofollow. The platform module staging-safety-net sends the same header for what WordPress answers; images, PDFs and
+# the rest never reach PHP, so only the web server can cover them. The block is ADDED where WP_ENV is staging or any other non-production
+# value and REMOVED where it is production or unset, so a staging .htaccess copied to production cannot keep the site out of search.
+# Re-asserted every release (W3TC drops blocks it does not know). Wrapped in <IfModule>: no mod_headers = no header, never a 500.
+WP_ENV_VALUE="$(sed -n 's/^WP_ENV=//p' "$SHARED_DIR/.env" 2>/dev/null | tr -d "\"'\r" | head -1)" || WP_ENV_VALUE=""
+if [ -n "$WP_ENV_VALUE" ] && [ "$WP_ENV_VALUE" != "production" ]; then
+    if ! grep -q '# BEGIN Staging Noindex' "$HTACCESS"; then
+        cat >>"$HTACCESS" <<'EOF'
+
+# BEGIN Staging Noindex
+<IfModule mod_headers.c>
+Header set X-Robots-Tag "noindex, nofollow"
+</IfModule>
+# END Staging Noindex
+EOF
+        echo "Added the Staging Noindex block to $HTACCESS (WP_ENV=$WP_ENV_VALUE)"
+    fi
+elif grep -q '# BEGIN Staging Noindex' "$HTACCESS"; then
+    awk '/# BEGIN Staging Noindex/{skip=1} !skip{print} /# END Staging Noindex/{skip=0}' "$HTACCESS" >"$HTACCESS.tmp" && cat "$HTACCESS.tmp" >"$HTACCESS" && rm -f "$HTACCESS.tmp"
+    echo "Removed the Staging Noindex block from $HTACCESS (WP_ENV is production or unset)"
+fi
+
 # Prove the hardening answers, not just that its marker is in the file (MGR-67: bp, js). A marker proves nothing when the server ignores the
 # file (AllowOverride, a proxy in front, mod_rewrite off). Each probe path does not exist; the deny rules fire before the file system is
 # consulted, so a working rule answers 403 and a missing one 404. A mismatch warns loudly and never fails the deploy (the release is
@@ -710,6 +733,9 @@ if [ -f "$WP_CLI" ]; then
     # the first pages of its sitemap now instead of leaving them to the first visitors. Only when W3TC is active AND a preloader
     # sitemap is set in its settings (bin/deploy/w3tc-settings.php sets one); otherwise nothing runs. Bounded and warn-only.
     if wp_run plugin is-active w3-total-cache >/dev/null 2>&1; then
+        # Purge the page cache at every release (WP-91, T-9). web/app/cache is per release, so the new release's own cache starts empty; this makes
+        # that explicit (and clears a cache directory a site has moved to a shared location, and any reverse proxy W3TC is configured for).
+        run_wp w3-total-cache flush posts
         PRIME_SITEMAP="$(wp_run w3-total-cache option get pgcache.prime.sitemap 2>/dev/null | tr -d '[:space:]')" || PRIME_SITEMAP=""
         # Uncached pages take about 4 s each on 20i, so the priming has its own, longer bound than the other WP-CLI calls
         # (30 pages would overrun the 120 s WP_CLI_TIMEOUT; 26 pages took about 80 s in one measured run).
