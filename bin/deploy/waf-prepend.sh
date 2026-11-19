@@ -14,16 +14,36 @@
 # turned off). It touches nothing outside <shared>/waf and <release>/web/.user.ini, prints no value from .env and exits 0 unless it cannot write.
 #
 # Usage: waf-prepend.sh <release_dir> <shared_dir> <current_link>
+#        waf-prepend.sh --rollback <shared_dir> <current_link>   the one-command rollback (WP-85 pilot): sets WORDFENCE_EXTENDED_PROTECTION=0 in <shared>/.env
+#                                                                  and removes ONLY Wordfence's block from the live release's web/.user.ini (the pkde opcache block
+#                                                                  stays; deleting the whole file would drop it). PHP stops prepending within user_ini.cache_ttl.
 set -uo pipefail
 
-RELEASE_DIR="${1:-}"; SHARED_DIR="${2:-}"; CURRENT_LINK="${3:-}"
-[ -d "$RELEASE_DIR" ] && [ -d "$SHARED_DIR" ] && [ -n "$CURRENT_LINK" ] || { echo "usage: waf-prepend.sh <release_dir> <shared_dir> <current_link>" >&2; exit 2; }
+ROLLBACK=0
+if [ "${1:-}" = "--rollback" ]; then
+    ROLLBACK=1
+    SHARED_DIR="${2:-}"; CURRENT_LINK="${3:-}"
+    RELEASE_DIR="$(cd "$CURRENT_LINK" 2>/dev/null && pwd -P)"
+else
+    RELEASE_DIR="${1:-}"; SHARED_DIR="${2:-}"; CURRENT_LINK="${3:-}"
+fi
+[ -d "$RELEASE_DIR" ] && [ -d "$SHARED_DIR" ] && [ -n "$CURRENT_LINK" ] || { echo "usage: waf-prepend.sh <release_dir> <shared_dir> <current_link> | --rollback <shared_dir> <current_link>" >&2; exit 2; }
 for p in "$RELEASE_DIR" "$SHARED_DIR" "$CURRENT_LINK"; do
     case "$p" in *"'"*|*$'\n'*) echo "waf-prepend: refusing a path with a quote or a newline" >&2; exit 2 ;; esac
 done
 
 # one value from <shared>/.env (the last assignment, quotes and carriage returns removed; nothing is echoed by this function)
 env_value() { sed -n "s/^$1=//p" "$SHARED_DIR/.env" 2>/dev/null | tail -1 | tr -d "\"'\r"; }
+
+if [ "$ROLLBACK" = 1 ]; then
+    # the flag off first, so the next release does not write the block again; only this one line of the .env is touched
+    if grep -q '^WORDFENCE_EXTENDED_PROTECTION=' "$SHARED_DIR/.env" 2>/dev/null; then
+        tmp="$(mktemp)" && sed 's/^WORDFENCE_EXTENDED_PROTECTION=.*/WORDFENCE_EXTENDED_PROTECTION=0/' "$SHARED_DIR/.env" > "$tmp" && cat "$tmp" > "$SHARED_DIR/.env"
+        rm -f "$tmp"
+    else
+        { [ -s "$SHARED_DIR/.env" ] && [ -n "$(tail -c1 "$SHARED_DIR/.env")" ] && echo; printf 'WORDFENCE_EXTENDED_PROTECTION=0\n'; } >> "$SHARED_DIR/.env"
+    fi
+fi
 
 FLAG="$(env_value WORDFENCE_EXTENDED_PROTECTION)"
 INI="$RELEASE_DIR/web/.user.ini"

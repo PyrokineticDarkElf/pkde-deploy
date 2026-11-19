@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026.11.19.4
+
+Wordfence Extended Protection: pilot preparation (WP-85, TPL-188). **Adopt:** bump `pkde/deploy` and the workflow tags; nothing changes for a site that has not opted in.
+
+- **One-command rollback:** `bash <root>/current/bin/deploy/waf-prepend.sh --rollback <root>/shared <root>/current` sets `WORDFENCE_EXTENDED_PROTECTION=0` in `shared/.env` (that one line; appended if absent) and removes only Wordfence's block from the live release's `web/.user.ini`; the `; pkde opcache` block stays (deleting the whole file, as the old advice said, drops it until the next release). Tested: `waf-prepend.test.sh` 44 checks (11 new: block gone, opcache block kept, flag 0, rest of `.env` untouched, no value printed, a later release does not bring the block back, a flag-less `.env` without a final newline, a missing link is a usage error), in a Linux container with PHP.
+- **Drift:** a new row for opted-in sites, "/.user.ini is not downloadable" (403, 404 or a redirect PASS; any 2xx FAIL with the remedy; no answer or a 401 SKIP). Checked in a real Apache 2.4: a default Apache answers 200 for `/.user.ini`, and `<Files ".user.ini">` / `Require all denied` in `.htaccess` makes it 403 without touching the site. The existing pointer row and the new row now also run on a staging site where Wordfence is inactive (they read files and one URL, not Wordfence), because that is where the pilot proves the mechanism. Pest 115.
+
 ## 2026.11.19.3
 
 Contact Form 7 forms found by a stable key (TPL-186, WP-83). **Adopt:** bump `pkde/deploy` and the workflow tags; an existing site runs the tagging script once on staging and again on production.

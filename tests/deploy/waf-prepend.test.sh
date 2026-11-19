@@ -94,6 +94,28 @@ check "no plugin: exit 0" "$rc" "0"
 has "no plugin: warns" "$out" "no Wordfence plugin"
 check "no plugin: no .user.ini written" "$([ -e "$REL2/web/.user.ini" ] && echo yes || echo no)" "no"
 
+# 10. the one-command rollback (--rollback <shared> <current>): flag off in .env, ONLY Wordfence's block leaves the live release's .user.ini (the opcache block stays)
+sed -i.bak 's/^WORDFENCE_EXTENDED_PROTECTION=0$/WORDFENCE_EXTENDED_PROTECTION=1/' "$SHARED/.env" && rm -f "$SHARED/.env.bak"
+printf '; pkde opcache\nopcache.revalidate_path = 1\n; END pkde opcache\n' > "$REL/web/.user.ini"
+bash "$S" "$REL" "$SHARED" "$CUR" >/dev/null 2>&1
+has "rollback setup: the block is in place" "$(cat "$REL/web/.user.ini")" "auto_prepend_file = '$SHARED/waf/wordfence-waf.php'"
+out="$(bash "$S" --rollback "$SHARED" "$CUR" 2>&1)"; rc=$?
+check "rollback: exit 0" "$rc" "0"
+has "rollback: says it removed the block" "$out" "removed the block"
+INI="$(cat "$REL/web/.user.ini")"
+lacks "rollback: Wordfence's block is gone" "$INI" "auto_prepend_file"
+has "rollback: the opcache block stays" "$INI" "opcache.revalidate_path = 1"
+check "rollback: the flag is 0 in .env" "$(grep -c '^WORDFENCE_EXTENDED_PROTECTION=0$' "$SHARED/.env")" "1"
+check "rollback: the rest of .env is untouched" "$(grep -c '^DB_PASSWORD=canary-never-printed-value$' "$SHARED/.env")" "1"
+lacks "rollback: prints no .env value" "$out" "canary-never-printed-value"
+out="$(bash "$S" "$REL" "$SHARED" "$CUR" 2>&1)"
+check "after rollback a release does not bring the block back" "$(grep -c '^auto_prepend_file' "$REL/web/.user.ini")" "0"
+# no flag line at all, and an .env without a final newline: the line is appended on its own line
+printf 'WP_ENV=staging' > "$SHARED/.env"
+bash "$S" --rollback "$SHARED" "$CUR" >/dev/null 2>&1
+check "rollback without a flag line: appended on its own line" "$(tail -2 "$SHARED/.env" | tr '\n' '|')" "WP_ENV=staging|WORDFENCE_EXTENDED_PROTECTION=0|"
+bash "$S" --rollback "$SHARED" "$T/nowhere" >/dev/null 2>&1; check "rollback with a missing current link: usage error" "$?" "2"
+
 # 9. argument checks and a quote in a path
 bash "$S" >/dev/null 2>&1; check "no arguments: usage error" "$?" "2"
 bash "$S" "$REL" "$SHARED" "$T/it's" >/dev/null 2>&1; check "a quote in a path is refused" "$?" "2"

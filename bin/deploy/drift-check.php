@@ -295,9 +295,19 @@ function pkde_drift_evaluate(array $f): array
     // Relevanssi (the shop's search, TPL-133): installed but never indexed, it answers every search with nothing. settings script: the kit's
     // bin/relevanssi-settings.php rebuilds the index. Only while the plugin is active; the fact is the number of rows in its index table.
     // Wordfence Extended Protection (WP-85), only for a site that opted in with WORDFENCE_EXTENDED_PROTECTION=1: web/.user.ini must point at the shim in shared/waf
-    if (is_array($f['waf_prepend'] ?? null) && ! empty($f['waf_prepend']['enabled']) && ! $wfOffOnStaging) {
+    // (the row reads files and one URL, not Wordfence itself, so it also runs on a staging site where Wordfence is inactive: that is where the pilot proves the mechanism)
+    if (is_array($f['waf_prepend'] ?? null) && ! empty($f['waf_prepend']['enabled'])) {
         $wp = $f['waf_prepend'];
         $cmp('Wordfence Extended Protection: web/.user.ini points at the shared shim', ! empty($wp['ini_target']) && ! empty($wp['target_exists']) && ! empty($wp['target_has_bootstrap']), ! empty($wp['ini_target']) ? 'the auto_prepend_file target is missing or does not load the Wordfence bootstrap: run bin/deploy/waf-prepend.sh (a release does it)' : 'web/.user.ini has no auto_prepend_file line: the next release writes it (bin/deploy/waf-prepend.sh), or the site is not on 2026.11.13.4 or later');
+        // web/.user.ini names the firewall shim's path: it must not be downloadable (403, 404 or a redirect; a gate or no loopback is a SKIP).
+        if (array_key_exists('userini_status', $wp)) {
+            $uis = (int) $wp['userini_status'];
+            if (in_array($uis, [0, 401], true)) {
+                $add('SKIP', 'Wordfence Extended Protection: /.user.ini is not downloadable', 'the probe answered ' . ($uis ?: 'no response') . ': check it from outside with curl -I <site>/.user.ini (expect 403 or 404)');
+            } else {
+                $cmp('Wordfence Extended Protection: /.user.ini is not downloadable', $uis < 200 || $uis >= 300, 'it answers ' . $uis . ' and serves the file (it names the shim path): add <Files ".user.ini"> Require all denied </Files> to the shared .htaccess, or switch the flag off (bin/deploy/waf-prepend.sh --rollback)');
+            }
+        }
     }
 
     // REST users (WP-88): an anonymous GET of the user routes must not list anybody (401, 403 or 404; the platform module rest-users-private answers 404 in every environment)
@@ -566,6 +576,8 @@ function pkde_drift_waf_prepend_facts(): array
     if (! $facts['enabled']) {
         return $facts;
     }
+
+    $facts['userini_status'] = pkde_drift_http(home_url('/.user.ini'))['status'];
 
     foreach ([dirname(rtrim(ABSPATH, '/')), rtrim(ABSPATH, '/')] as $dir) {
         $ini = $dir . '/.user.ini';

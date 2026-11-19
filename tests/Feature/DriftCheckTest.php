@@ -582,6 +582,27 @@ it('checks Wordfence Extended Protection only for a site that opted in, and fail
     }
 });
 
+it('fails an opted-in site whose /.user.ini can be downloaded, skips what it cannot tell, and still runs on a staging site without Wordfence (WP-85 pilot)', function () {
+    $row = 'Wordfence Extended Protection: /.user.ini is not downloadable';
+    $facts = pkdeGoodFacts();
+    $facts['waf_prepend'] = ['enabled' => true, 'ini_target' => '/x/waf/wordfence-waf.php', 'target_exists' => true, 'target_has_bootstrap' => true];
+    expect(pkdeStatuses($facts))->not->toHaveKey($row); // no probe fact: nothing to say
+
+    foreach ([403 => 'PASS', 404 => 'PASS', 301 => 'PASS', 200 => 'FAIL', 0 => 'SKIP', 401 => 'SKIP'] as $status => $expected) {
+        $facts['waf_prepend']['userini_status'] = $status;
+        expect(pkdeStatuses($facts)[$row])->toBe($expected);
+    }
+
+    // a staging site where Wordfence is inactive: the mechanism rows still run (that is where the pilot proves it)
+    $facts['env'] = 'staging';
+    $facts['wordfence'] = null;
+    $facts['active_plugins'] = array_values(array_diff($facts['active_plugins'], ['wordfence']));
+    $statuses = pkdeStatuses($facts);
+    expect($statuses['Wordfence'])->toBe('SKIP')
+        ->and($statuses['Wordfence Extended Protection: web/.user.ini points at the shared shim'])->toBe('PASS')
+        ->and($statuses[$row])->toBe('SKIP');
+});
+
 // Search engine signals as the site answers them (WP-91): the probe rows.
 function pkdeSeoProbe(array $over = []): array
 {
