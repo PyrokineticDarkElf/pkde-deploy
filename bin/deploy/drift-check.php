@@ -21,6 +21,7 @@
 require_once __DIR__ . '/w3tc-standard.php';
 require_once __DIR__ . '/alert-email.php';
 require_once __DIR__ . '/rankmath-standard.php';
+require_once __DIR__ . '/cf7-form-key-standard.php';
 
 const PKDE_DRIFT_SUBJECT = 'New website enquiry - [_site_title] - [your-name]';
 
@@ -110,6 +111,36 @@ function pkde_drift_personal_views(string $dir): array
     sort($found);
 
     return $found;
+}
+
+/**
+ * The Contact Form 7 lookup keys the theme asks for (App\form_id('x'), App\form_shortcode('x')) and the files that still find a form by its title (TPL-186).
+ * Read only; scans the theme's PHP and Blade files in the given directories. Returns ['keys' => list<string>, 'by_title' => list<string> relative paths].
+ *
+ * @return array{keys: list<string>, by_title: list<string>}
+ */
+function pkde_drift_cf7_key_usage(array $dirs): array
+{
+    $keys = [];
+    $byTitle = [];
+    foreach ($dirs as $dir) {
+        if (! is_dir($dir)) {
+            continue;
+        }
+        foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS)) as $file) {
+            if (! $file->isFile() || ! str_ends_with($file->getFilename(), '.php')) {
+                continue;
+            }
+            $scan = pkde_cf7_key_scan((string) file_get_contents($file->getPathname()));
+            $keys = array_merge($keys, $scan['keys']);
+            if ($scan['by_title']) {
+                $byTitle[] = basename($dir) . '/' . ltrim(substr($file->getPathname(), strlen($dir)), '/');
+            }
+        }
+    }
+    sort($byTitle);
+
+    return ['keys' => array_values(array_unique($keys)), 'by_title' => $byTitle];
 }
 
 /**
@@ -430,6 +461,28 @@ function pkde_drift_evaluate(array $f): array
         }
     }
 
+    // Form lookup keys (TPL-186): INFO for which forms carry one; FAIL only when a theme file asks App\form_id('x') and no form has that key; INFO for a title lookup left over.
+    if ($f['cf7_active'] ?? false) {
+        $tagged = [];
+        foreach ($f['cf7_forms'] ?? [] as $form) {
+            if (($form['key'] ?? '') !== '') {
+                $tagged[(string) $form['key']] = (int) ($form['id'] ?? 0);
+            }
+        }
+        $list = [];
+        foreach ($tagged as $key => $id) {
+            $list[] = "$key (#$id)";
+        }
+        $add('INFO', 'CF7 forms with a lookup key (_pkde_form_key)', $list === [] ? 'none' : implode(', ', $list));
+        $usage = (array) ($f['cf7_key_usage'] ?? []);
+        foreach ((array) ($usage['keys'] ?? []) as $key) {
+            $cmp("A theme file asks for CF7 form key \"$key\": a form carries it", isset($tagged[$key]), 'no form has _pkde_form_key = ' . $key . ': run bin/deploy/cf7-form-key.php ' . $key . '="<the form\'s title>" (it tags the form and prints its ID)');
+        }
+        if (! empty($usage['by_title'])) {
+            $add('INFO', 'A theme file still finds a CF7 form by its title', implode(', ', (array) $usage['by_title']) . ': a rename of the form breaks it; use \\App\\form_id(\'key\') (pkde-sage-kit 2026.11.19.2)');
+        }
+    }
+
     // Site identity
     if (trim((string) ($f['wp_admin_email'] ?? '')) !== '') {
         $cmp('admin_email equals WP_ADMIN_EMAIL (.env)', strcasecmp(trim((string) ($f['admin_email'] ?? '')), trim((string) $f['wp_admin_email'])) === 0, 'admin_email differs from WP_ADMIN_EMAIL in .env (addresses are not printed here): wp option update admin_email "<the .env value>"', true);
@@ -666,6 +719,7 @@ function pkde_drift_collect(): array
             $forms[] = [
                 'id' => $p->ID,
                 'title' => (string) $p->post_title,
+                'key' => (string) get_post_meta($p->ID, '_pkde_form_key', true),
                 'headers' => (string) ($mail['additional_headers'] ?? ''),
                 'has_subject' => strpos((string) get_post_meta($p->ID, '_form', true), 'your-subject') !== false,
                 'subject' => (string) ($mail['subject'] ?? ''),
@@ -752,6 +806,7 @@ function pkde_drift_collect(): array
             'managed' => $const('LOGIN_SLUG') !== '' && (string) get_option('whl_page') === sanitize_title_with_dashes($const('LOGIN_SLUG')),
         ],
         'cf7_forms' => $forms,
+        'cf7_key_usage' => pkde_drift_cf7_key_usage([get_template_directory() . '/resources/views', get_template_directory() . '/app']),
         'cf7_active' => in_array('contact-form-7', $active, true),
         'smtp_host_set' => $const('SMTP_HOST') !== '',
         'post_smtp' => class_exists('PostmanOptions') ? (function () {

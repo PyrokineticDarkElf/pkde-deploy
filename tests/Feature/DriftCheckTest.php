@@ -749,3 +749,24 @@ it('matches layered-nav query arguments with the rule in activate-release.sh and
         expect(preg_match($regex, $allowed))->toBe(0, $allowed);
     }
 });
+
+it('reports which CF7 forms carry a lookup key, and fails only a key a theme file asks for that no form has (TPL-186)', function () {
+    $facts = pkdeGoodFacts();
+    $facts['cf7_forms'][0]['key'] = 'contact';
+    $facts['cf7_key_usage'] = ['keys' => ['contact'], 'by_title' => []];
+    $statuses = pkdeStatuses($facts);
+    expect($statuses['CF7 forms with a lookup key (_pkde_form_key)'])->toBe('INFO')
+        ->and($statuses['A theme file asks for CF7 form key "contact": a form carries it'])->toBe('PASS')
+        ->and($statuses)->not->toHaveKey('A theme file still finds a CF7 form by its title');
+
+    $facts['cf7_key_usage'] = ['keys' => ['contact', 'park-home-enquiry'], 'by_title' => ['views/front-page.blade.php']];
+    $statuses = pkdeStatuses($facts);
+    expect($statuses['A theme file asks for CF7 form key "park-home-enquiry": a form carries it'])->toBe('FAIL')
+        ->and($statuses['A theme file still finds a CF7 form by its title'])->toBe('INFO');
+
+    // no key asked for and no form tagged: INFO only, never a FAIL; without CF7 the rows are absent
+    $facts = pkdeGoodFacts();
+    expect(pkdeStatuses($facts)['CF7 forms with a lookup key (_pkde_form_key)'])->toBe('INFO');
+    $facts['cf7_active'] = false;
+    expect(pkdeStatuses($facts))->not->toHaveKey('CF7 forms with a lookup key (_pkde_form_key)');
+});

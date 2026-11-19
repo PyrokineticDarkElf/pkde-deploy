@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026.11.19.3
+
+Contact Form 7 forms found by a stable key (TPL-186, WP-83). **Adopt:** bump `pkde/deploy` and the workflow tags; an existing site runs the tagging script once on staging and again on production.
+
+- **`bin/deploy/cf7-form-key.php`** (`cf7-form-key-standard.php` holds the rules): tags SEVERAL forms per run from `key="the form's title today"` arguments (`bash bin/deploy/wp.sh eval-file bin/deploy/cf7-form-key.php contact="Contact Form" park-home-enquiry="Park Home Enquiry"`; no arguments tags "Contact form" as `contact`). Each form is tagged once (meta `_pkde_form_key`), a second run changes nothing, a form that already carries the key counts whatever its title is now, and it prints the key and the form ID only. A title that matches no form, several forms, or a form with another key is reported and not touched (exit 1). Run on the template stack through WP-CLI with Contact Form 7 active: no arguments and a title that does not match gives NOT TAGGED; the arguments tag it; the second run and a run after a rename say "already tagged".
+- **Drift rows:** INFO "CF7 forms with a lookup key" (which keys, with form IDs); FAIL "A theme file asks for CF7 form key 'x': a form carries it" only when a theme file calls `form_id('x')` / `form_shortcode('x')` and no form has the key (with the command to run); INFO when a theme file still finds a form by `get_page_by_title(... 'wpcf7_contact_form')`.
+- Both files ship in the artifact (`assemble-artifact.sh`, `check-artifact.sh`). Pest 114 (the plan, the argument parser, the source scan, the script in a separate process, the drift rows).
+
 ## 2026.11.19.2
 
 Small corrections (TPL-185). **Adopt:** bump `pkde/deploy` and the workflow tags.

@@ -83,6 +83,8 @@ required=(
     bin/deploy/perf-probe.sh
     bin/deploy/seo-sitemap-exclusions.php
     bin/deploy/rankmath-standard.php
+    bin/deploy/cf7-form-key-standard.php
+    bin/deploy/cf7-form-key.php
     bin/deploy/rankmath-baseline.php
     bin/deploy/wp.sh
     web/app/themes/sage/public/build/manifest.json
