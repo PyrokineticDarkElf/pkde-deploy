@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026.11.19.9
+
+One Rank Math baseline part on its own: "Archives" off the titles (WP-99 B, TPL-201; owner 2026-11-19). **Adopt:** bump `pkde/deploy` and the workflow tags (January train); then EVERY site runs the titles part on staging after its next deploy and on production in the window.
+
+- **`bin/deploy/rankmath-baseline.php only=titles|schema|share-image`** (one or more, comma-separated): applies that part of the baseline and nothing else (no language, logo or organization change). `only=titles` takes "Archives" and the repeated site name out of every title template (`pkde_rankmath_clean_title()`: the post types, the taxonomies, the home, author, date, search and 404 titles). No argument: the whole baseline, as before. An unknown part is refused and nothing is written. Idempotent; it prints option key names, never values. On a site: `bash bin/deploy/wp.sh eval-file bin/deploy/rankmath-baseline.php only=titles`.
+- Tested: Pest 121 (the parser, the part split, and the script run as a separate process with stand-ins: one option written and named, a second run writes nothing, an unknown part writes nothing). Not run against a real Rank Math site: the titles function is the one the baseline has used since 2026.11.19.
+
 ## 2026.11.19.8
 
 Drift: kit view overrides (TPL-199, triage TPL-189). **Adopt:** bump `pkde/deploy` and the workflow tags (January train).

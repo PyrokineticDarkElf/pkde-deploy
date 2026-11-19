@@ -41,9 +41,58 @@ function pkde_rankmath_clean_title(string $template): string
  * @param  array<string, mixed>  $titles  the current rank-math-options-titles
  * @param  list<string>  $postTypes  public post types that have a pt_<type>_* group
  * @param  array{name: string, logo_url: string, logo_id: int}  $brand
+ * @param  list<string>  $only  parts (PKDE_RANKMATH_PARTS) to apply on their own; empty = the whole baseline
  * @return array<string, mixed> only the keys whose value differs from the current one
  */
-function pkde_rankmath_baseline(array $titles, array $postTypes, array $brand): array
+/**
+ * The parts of the baseline a site may apply on its own (TPL-201, WP-99 B): titles (the title templates, without "Archives" and with the site name once),
+ * schema (the default rich snippet of pages, posts and products) and share-image (the default share image). Everything else (company, name, logo, archive
+ * descriptions) is applied only with no part named.
+ */
+const PKDE_RANKMATH_PARTS = ['titles', 'schema', 'share-image'];
+
+/**
+ * Which part of the baseline a Rank Math title-options key belongs to, or null when it belongs to none. Pure.
+ */
+function pkde_rankmath_part_of(string $key): ?string
+{
+    if (preg_match('/_title$/', $key) === 1) {
+        return 'titles';
+    }
+    if (preg_match('/_default_rich_snippet$|_default_article_type$/', $key) === 1) {
+        return 'schema';
+    }
+    if (in_array($key, ['open_graph_image', 'open_graph_image_id'], true)) {
+        return 'share-image';
+    }
+
+    return null;
+}
+
+/**
+ * The `only=a,b` argument of rankmath-baseline.php (WP-CLI passes eval-file arguments as a list). Returns the parts asked for and the names that are not parts.
+ * No argument: no parts, which means the whole baseline.
+ *
+ * @param  list<string>  $args
+ * @return array{only: list<string>, unknown: list<string>}
+ */
+function pkde_rankmath_only(array $args): array
+{
+    $only = [];
+    $unknown = [];
+
+    foreach ($args as $arg) {
+        if (str_starts_with((string) $arg, 'only=')) {
+            foreach (array_filter(array_map('trim', explode(',', substr((string) $arg, 5)))) as $part) {
+                in_array($part, PKDE_RANKMATH_PARTS, true) ? $only[] = $part : $unknown[] = $part;
+            }
+        }
+    }
+
+    return ['only' => array_values(array_unique($only)), 'unknown' => array_values(array_unique($unknown))];
+}
+
+function pkde_rankmath_baseline(array $titles, array $postTypes, array $brand, array $only = []): array
 {
     $want = ['knowledgegraph_type' => 'company'];
 
@@ -83,7 +132,7 @@ function pkde_rankmath_baseline(array $titles, array $postTypes, array $brand): 
         }
     }
 
-    return array_filter($want, fn($value, $key) => ($titles[$key] ?? null) !== $value, ARRAY_FILTER_USE_BOTH);
+    return array_filter($want, fn($value, $key) => ($titles[$key] ?? null) !== $value && ($only === [] || in_array(pkde_rankmath_part_of((string) $key), $only, true)), ARRAY_FILTER_USE_BOTH);
 }
 
 /**
