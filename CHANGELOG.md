@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026.11.19.1
+
+Layered-navigation bot flood guard (TPL-184, tcs TCS-123, owner go 2026-11-16). **Adopt:** bump `pkde/deploy` and the workflow tags; a shop adds its icons (below).
+
+- **Query Flood Guard block** in the shared `.htaccess`, inserted ABOVE WordPress's rules (WordPress's catch-all ends the rewrite pass for every request that is not a file, so a rule below it never sees a virtual URL such as `/shop/`), once, and re-added when W3TC or Wordfence drop it: `RewriteCond %{QUERY_STRING} (^|&)(filter_[a-z0-9_-]+|query_type_[a-z0-9_-]+|rating_filter)= [NC]` and `RewriteRule ^ - [G,L]`, so `?filter_colour=a,b&query_type_colour=or` answers **410 Gone** from Apache before WordPress boots. Proved in a real Apache 2.4 (container, `AllowOverride All`, the block above the WordPress block): the layered-nav, `rating_filter` and mixed-case queries answer 410; `?orderby=`, `sage_filter_*[]`, `filter_product_cat[]` (raw and `%5B%5D`), `refilter_a=` and a plain `/favicon.ico` answer as before. The exemption asked for the array-valued `filter_product_cat[]` / `filter_product_tag[]` is by construction: the name is followed by `[` or `%5B`, never `=`. A site that uses WooCommerce's layered-nav widgets or Product Filter blocks deletes the block and leaves a `# BEGIN Query Flood Guard` comment so it is not added again.
+- **Drift rows:** `/favicon.ico` and `/apple-touch-icon.png` answer as image files (a WordPress-served one answers 200 `text/html`; a missing one 404 is a FAIL too), and `?filter_x=a,b&query_type_x=or` answers 410. A gate or firewall (401, 403, no response) is a SKIP.
+- Tests: `activate-release.test.sh` scenario 18 (above WordPress, once, re-added, other blocks survive; run in a Linux container), Pest 106 including the rule's regex against 6 blocked and 9 allowed query strings. NOT run on a real host: whether 20i's Apache honours `RewriteRule ... [G]` in `.htaccess` (the drift row says).
+
 ## 2026.11.19
 
 Security headers, the Rank Math baseline and more drift rows (WP-91 phase 2, TPL-180, TPL-182). **Adopt:** bump `pkde/deploy` and the workflow tags; HSTS is NOT included (owner decision pending).

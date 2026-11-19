@@ -541,6 +541,37 @@ EOF
     echo "Added the XML-RPC Hardening block to $HTACCESS"
 fi
 
+# Query Flood Guard (TPL-184, tcs TCS-123): a botnet took a WooCommerce shop down by requesting its layered-navigation URLs
+# (?filter_colour=a,b,c&query_type_colour=or). WooCommerce runs every combination as an uncached query, and the kit's own filters
+# (sage_filter_*, no links to crawl) never produce these URLs, so Apache answers them 410 Gone before WordPress boots. The rule has to sit BEFORE
+# WordPress's own rules (they send every request that is not a file to index.php with [L]), so it is inserted above "# BEGIN WordPress".
+#  - Matched: a query argument named filter_<name>=, query_type_<name>= or rating_filter= (case-insensitive, at the start or after &).
+#  - NOT matched, by construction: sage_filter_* (the "filter_" is not at the start of the name), and the array-valued filter_product_cat[]= /
+#    filter_product_tag[]= of the earlier custom controls (the name is followed by "[" or "%5B", not "="), which the kit still migrates.
+#    The kit drops that migration in a later release; the rule then needs no exemption.
+#  - A site that really uses WooCommerce's layered-nav widgets or its Product Filter blocks deletes this block from its shared .htaccess and keeps
+#    it out (the block is only added when its marker is missing; delete the lines, leave a "# BEGIN Query Flood Guard" comment to keep it from coming back).
+# Wrapped in <IfModule>: no mod_rewrite = no protection, never a 500. Re-added when W3TC or Wordfence rewrite the file and drop it.
+if ! grep -q '# BEGIN Query Flood Guard' "$HTACCESS"; then
+    cat >"$HTACCESS.guard" <<'EOF'
+# BEGIN Query Flood Guard
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteCond %{QUERY_STRING} (^|&)(filter_[a-z0-9_-]+|query_type_[a-z0-9_-]+|rating_filter)= [NC]
+RewriteRule ^ - [G,L]
+</IfModule>
+# END Query Flood Guard
+
+EOF
+    if grep -q '# BEGIN WordPress' "$HTACCESS"; then
+        awk 'FNR==NR{block=block $0 "\n"; next} /# BEGIN WordPress/ && !done {printf "%s", block; done=1} {print}' "$HTACCESS.guard" "$HTACCESS" >"$HTACCESS.new" && cat "$HTACCESS.new" >"$HTACCESS"
+    else
+        cat "$HTACCESS.guard" >>"$HTACCESS"
+    fi
+    rm -f "$HTACCESS.guard" "$HTACCESS.new"
+    echo "Added the Query Flood Guard block to $HTACCESS"
+fi
+
 # Security headers (WP-91, TPL-180): the four every response should carry, set once for the whole site in the shared .htaccess and re-added when W3TC
 # drops them. `always` also covers error pages and redirects. Chosen so nothing the template uses breaks:
 #  - X-Content-Type-Options nosniff: a file is only what its Content-Type says.

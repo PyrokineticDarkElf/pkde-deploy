@@ -584,6 +584,9 @@ function pkdeSeoProbe(array $over = []): array
         'home' => ['status' => 200, 'x_robots' => '', 'body' => '', 'security' => ['x-content-type-options' => 'nosniff', 'referrer-policy' => 'strict-origin-when-cross-origin', 'x-frame-options' => 'SAMEORIGIN', 'permissions-policy' => 'camera=()']],
         'robots_txt' => ['status' => 200, 'x_robots' => '', 'body' => "User-agent: *\nDisallow: /wp/wp-admin/\nSitemap: https://example.test/sitemap_index.xml\n"],
         'static' => ['status' => 200, 'x_robots' => '', 'body' => ''],
+        'favicon' => ['status' => 200, 'x_robots' => '', 'type' => 'image/vnd.microsoft.icon', 'body' => ''],
+        'apple_touch' => ['status' => 200, 'x_robots' => '', 'type' => 'image/png', 'body' => ''],
+        'flood' => ['status' => 410, 'x_robots' => '', 'body' => ''],
         'faceted' => ['status' => 200, 'x_robots' => 'noindex, follow', 'meta_noindex' => true],
         'sitemap' => ['status' => 200, 'noindex' => []],
     ], $over);
@@ -706,4 +709,38 @@ it('cleans a Rank Math title template and plans only what differs', function () 
         ->and($plan)->not->toHaveKey('tax_category_description')
         ->and($plan)->not->toHaveKey('pt_product_default_rich_snippet')
         ->and(pkde_rankmath_baseline(['knowledgegraph_logo' => 'https://own/logo.png', 'open_graph_image' => 'https://own/og.png'], [], ['name' => '', 'logo_url' => 'https://example.test/l.png', 'logo_id' => 7]))->not->toHaveKey('open_graph_image')->not->toHaveKey('knowledgegraph_logo');
+});
+
+it('wants real icon files and a 410 for a layered-nav query, and skips what it could not reach (TPL-184)', function () {
+    $facts = pkdeGoodFacts();
+    $facts['wp_env'] = 'production';
+    $facts['seo_probe'] = pkdeSeoProbe();
+    $s = pkdeStatuses($facts);
+
+    expect($s['Static /favicon.ico is a real image file, not a WordPress page'])->toBe('PASS')
+        ->and($s['Static /apple-touch-icon.png is a real image file, not a WordPress page'])->toBe('PASS')
+        ->and($s['A WooCommerce layered-nav query (?filter_x=a,b&query_type_x=or) answers 410'])->toBe('PASS');
+
+    $facts['seo_probe'] = pkdeSeoProbe(['favicon' => ['type' => 'text/html; charset=UTF-8'], 'apple_touch' => ['status' => 404, 'type' => 'text/html'], 'flood' => ['status' => 200]]);
+    $s = pkdeStatuses($facts);
+
+    expect($s['Static /favicon.ico is a real image file, not a WordPress page'])->toBe('FAIL')
+        ->and($s['Static /apple-touch-icon.png is a real image file, not a WordPress page'])->toBe('FAIL')
+        ->and($s['A WooCommerce layered-nav query (?filter_x=a,b&query_type_x=or) answers 410'])->toBe('FAIL');
+
+    $facts['seo_probe'] = pkdeSeoProbe(['flood' => ['status' => 401]]);
+    expect(pkdeStatuses($facts)['A WooCommerce layered-nav query (?filter_x=a,b&query_type_x=or) answers 410'])->toBe('SKIP');
+});
+
+it('matches layered-nav query arguments with the rule in activate-release.sh and nothing the kit sends (TPL-184)', function () {
+    $script = file_get_contents(dirname(__DIR__, 2) . '/bin/deploy/activate-release.sh');
+    preg_match('/RewriteCond %\{QUERY_STRING\} (\S+) \[NC\]/', $script, $m);
+    $regex = '~' . str_replace('~', '\\~', $m[1]) . '~i';
+
+    foreach (['filter_colour=a,b&query_type_colour=or', 'x=1&filter_size=m', 'FILTER_size=x', 'rating_filter=4', 'orderby=price&query_type_pa_colour=and', 'filter_product_cat=clocks'] as $blocked) {
+        expect(preg_match($regex, $blocked))->toBe(1, $blocked);
+    }
+    foreach (['', 'orderby=price', 'sage_filter_product_cat%5B%5D=clocks', 'sage_filter_pa_colour%5B%5D=red&min_price=5', 'filter_product_cat%5B%5D=a', 'filter_product_tag[]=a', 'refilter_a=1', 'sage_view=sale', 's=filter_x'] as $allowed) {
+        expect(preg_match($regex, $allowed))->toBe(0, $allowed);
+    }
 });

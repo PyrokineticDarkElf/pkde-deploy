@@ -350,6 +350,23 @@ function pkde_drift_evaluate(array $f): array
             $cmp('Security header permissions-policy is set', trim((string) ($sec['permissions-policy'] ?? '')) !== '', 'the homepage sends no Permissions-Policy', true);
         }
 
+        // The icons are real files and the layered-nav flood rule answers 410 (deploy block Query Flood Guard; bin/setup writes the icons).
+        foreach (['favicon' => '/favicon.ico', 'apple_touch' => '/apple-touch-icon.png'] as $key => $path) {
+            if (is_array($sp[$key] ?? null) && (int) $sp[$key]['status'] === 404) {
+                $cmp('Static ' . $path . ' is a real image file, not a WordPress page', false, 'it answers 404: add web' . $path . ' (bin/generate-favicon.php writes it)', true);
+            } elseif ($reached('Static ' . $path, $sp[$key] ?? null)) {
+                $cmp('Static ' . $path . ' is a real image file, not a WordPress page', stripos((string) ($sp[$key]['type'] ?? ''), 'image/') === 0, 'it answers 200 as "' . ($sp[$key]['type'] ?? '') . '": WordPress serves it (every request boots PHP). Add web' . $path . ' (bin/generate-favicon.php writes it)', true);
+            }
+        }
+        if (is_array($sp['flood'] ?? null)) {
+            $floodStatus = (int) ($sp['flood']['status'] ?? 0);
+            if (in_array($floodStatus, [0, 401, 403], true)) {
+                $add('SKIP', 'A WooCommerce layered-nav query (?filter_x=a,b&query_type_x=or) answers 410', 'the probe answered ' . ($floodStatus ?: 'no response') . ' (a gate, a firewall or no loopback): check it from outside');
+            } else {
+                $cmp('A WooCommerce layered-nav query (?filter_x=a,b&query_type_x=or) answers 410', $floodStatus === 410, 'it answers ' . $floodStatus . ': the Query Flood Guard block is missing from the shared .htaccess (the next release adds it) or mod_rewrite is off', true);
+            }
+        }
+
         // A filtered or sorted shop URL is noindex in the header AND in the meta tag (kit: app/woocommerce/filter-query.php).
         if (is_array($sp['faceted'] ?? null) && $reached('Faceted shop URL is noindex', $sp['faceted'])) {
             $cmp('Faceted shop URL (?orderby=) is noindex in the X-Robots-Tag header', $noindex((string) $sp['faceted']['x_robots']), 'no noindex in the header: bump pkde/sage-kit to the release with the faceted rule');
@@ -563,13 +580,14 @@ function pkde_drift_http(string $url): array
         return ['status' => 0, 'x_robots' => '', 'body' => ''];
     }
     $header = wp_remote_retrieve_header($r, 'x-robots-tag');
+    $type = wp_remote_retrieve_header($r, 'content-type');
     $security = [];
     foreach (['x-content-type-options', 'referrer-policy', 'x-frame-options', 'permissions-policy'] as $name) {
         $value = wp_remote_retrieve_header($r, $name);
         $security[$name] = is_array($value) ? implode(', ', $value) : (string) $value;
     }
 
-    return ['status' => (int) wp_remote_retrieve_response_code($r), 'x_robots' => is_array($header) ? implode(', ', $header) : (string) $header, 'security' => $security, 'body' => (string) wp_remote_retrieve_body($r)];
+    return ['status' => (int) wp_remote_retrieve_response_code($r), 'x_robots' => is_array($header) ? implode(', ', $header) : (string) $header, 'type' => is_array($type) ? implode(', ', $type) : (string) $type, 'security' => $security, 'body' => (string) wp_remote_retrieve_body($r)];
 }
 
 /**
@@ -579,6 +597,11 @@ function pkde_drift_http(string $url): array
 function pkde_drift_seo_probe(): array
 {
     $out = ['home' => pkde_drift_http(home_url('/')), 'robots_txt' => pkde_drift_http(home_url('/robots.txt')), 'static' => pkde_drift_http(includes_url('images/blank.gif'))];
+    // Icons Apache must serve itself (a WordPress-served /favicon.ico boots PHP for every browser and bot) and the layered-nav flood rule (TPL-184).
+    $out['favicon'] = pkde_drift_http(home_url('/favicon.ico'));
+    $out['apple_touch'] = pkde_drift_http(home_url('/apple-touch-icon.png'));
+    $out['flood'] = pkde_drift_http(add_query_arg(['filter_pkdeprobe' => 'a,b', 'query_type_pkdeprobe' => 'or'], home_url('/')));
+    $out['favicon']['body'] = $out['apple_touch']['body'] = $out['flood']['body'] = '';
     $out['home']['body'] = '';
     $out['static']['body'] = '';
 

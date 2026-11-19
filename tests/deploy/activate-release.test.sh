@@ -534,4 +534,20 @@ bash $S $BASE SH4 5 >$T/s17d.log 2>&1
 check "a dropped Security Headers block is added again" "[ \$(grep -c 'BEGIN Security Headers' $BASE/shared/.htaccess) -eq 1 ] && grep -q 'X-Frame-Options' $BASE/shared/.htaccess"
 BASE=$OLD_BASE
 
+# 18. Query Flood Guard (TPL-184): inserted ABOVE WordPress's rules (they end the pass for every request that is not a file), once, re-added when dropped,
+# and a first deploy that has no WordPress block yet still gets it.
+OLD_BASE=$BASE
+mkrelease QF1; printf 'WP_ENV=production\n' > $BASE/shared/.env
+bash $S $BASE QF1 5 >$T/s18a.log 2>&1
+check "Query Flood Guard present exactly once, with the 410 rule" "[ \$(grep -c 'BEGIN Query Flood Guard' $BASE/shared/.htaccess) -eq 1 ] && grep -qF 'RewriteRule ^ - [G,L]' $BASE/shared/.htaccess && grep -qF '(^|&)(filter_[a-z0-9_-]+|query_type_[a-z0-9_-]+|rating_filter)=' $BASE/shared/.htaccess"
+check "the guard comes BEFORE the WordPress block (WordPress's catch-all would end the pass first)" "[ \$(grep -n 'BEGIN Query Flood Guard' $BASE/shared/.htaccess | cut -d: -f1) -lt \$(grep -n 'BEGIN WordPress' $BASE/shared/.htaccess | cut -d: -f1) ]"
+mkrelease QF2
+bash $S $BASE QF2 5 >$T/s18b.log 2>&1
+check "next release: still once, not announced again" "[ \$(grep -c 'BEGIN Query Flood Guard' $BASE/shared/.htaccess) -eq 1 ] && ! grep -q 'Added the Query Flood Guard' $T/s18b.log"
+awk '/# BEGIN Query Flood Guard/{skip=1} !skip{print} /# END Query Flood Guard/{skip=0}' $BASE/shared/.htaccess > $T/ht.noqf && cat $T/ht.noqf > $BASE/shared/.htaccess   # W3TC regenerated the file
+mkrelease QF3
+bash $S $BASE QF3 5 >$T/s18c.log 2>&1
+check "a dropped guard is added again, still above WordPress's block, and the other blocks survive" "[ \$(grep -c 'BEGIN Query Flood Guard' $BASE/shared/.htaccess) -eq 1 ] && [ \$(grep -n 'BEGIN Query Flood Guard' $BASE/shared/.htaccess | cut -d: -f1) -lt \$(grep -n 'BEGIN WordPress' $BASE/shared/.htaccess | cut -d: -f1) ] && grep -q 'BEGIN Security Headers' $BASE/shared/.htaccess && grep -q 'BEGIN Upload Cache' $BASE/shared/.htaccess"
+BASE=$OLD_BASE
+
 echo; echo "RESULT: $pass passed, $fail failed"; exit $fail
