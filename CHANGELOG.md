@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026.11.19.6
+
+The fresh render check behind the staging gate, a broken home page, and `/.user.ini` (TPL-191, tcs TCS-131; WP-85). **Adopt:** bump `pkde/deploy` and the workflow tags; a staging behind the HTTP gate adds `STAGING_GATE_AUTH` to its shared env file to have the check really run.
+
+- **Behind the staging gate:** the check used to print "not done, the home page could not be fetched (401)" and prove nothing. It now sends the gate's `user:password` from `STAGING_GATE_AUTH` in the shared env file when that is set (to curl on stdin as a config line, never on a command line, never printed or logged; same name as tcs's own self-requests use), and a 401/403 without it, or with credentials the gate refuses, is reported as "skipped: behind the staging gate" with the variable to set. A password holding a quote is not supported by the env reader (quotes are stripped, as for every value). Checked with real curl against a real Basic-auth server: 401 without, 200 with, for a password containing a quote and a backslash.
+- **A home page that answers 5xx fails the deploy** (it was "not done"): "BROKEN SITE: the home page of <url> answers HTTP 503", with the rollback command in the output, the release stays live and the run ends red (exit 3, "answers HTTP 503 (see BROKEN SITE above)"); `PKDE_FRESH_RENDER_CHECK=warn` only warns, `off` skips as before.
+- **User INI Guard block** in the shared `.htaccess`, for every site: `<Files ".user.ini">` / `Require all denied` inside `<IfModule mod_authz_core.c>`. A default Apache 2.4 serves `/.user.ini` (200; checked); it holds the opcache setting and, with Wordfence Extended Protection, the firewall shim's path. Added once, re-added when W3TC drops it; 20i's own stack already answers 403 on the live sites, so on 20i this changes nothing visible.
+- Tests: `activate-release.test.sh` 176 checks in a Linux container (new scenario 20: the guard once and re-added, 401 without credentials, credentials sent on stdin and found in no log or argument, a refused gate, 200 with credentials, 503 fails with exit 3 and warns under `warn`; the curl stub now speaks the `-o`/`-w` interface). NOT run on 20i or behind a real gate.
+
 ## 2026.11.19.5
 
 One-command rollback of a release (WP-95, TPL-187). **Adopt:** bump `pkde/deploy` and the workflow tags (the deploy copies the script to the server on every run, so the command exists after a site's next deploy to staging or production).

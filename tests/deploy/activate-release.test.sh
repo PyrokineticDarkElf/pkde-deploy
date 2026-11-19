@@ -163,11 +163,20 @@ if [ -n "\$f" ]; then echo "EXISTS \$(grep -c 'opcache_reset' "\$f")" >> "$T/cur
 # The fresh render check asks for the home page with a one-off query string: the stub answers with a stylesheet link (page-css), or fails (page-fail), or
 # changes its answer from the second request on (page-css-then).
 case "\$url" in *pkde-fresh-render*)
-  [ -f "$T/page-fail" ] && { echo "curl: (22) The requested URL returned error: 401" >&2; exit 22; }
+  # curl -o <file> -w '%{http_code}' [--config -]: the body goes to the file, the status to stdout; the status comes from $T/page-status (default 200), page-fail means 401
+  out=""; cfg=""; a=("\$@")
+  for ((i=0;i<\${#a[@]};i++)); do case "\${a[i]}" in -o) out="\${a[i+1]}";; --config) cfg=1;; esac; done
+  if [ -n "\$cfg" ]; then echo "GATE-CONFIG-ON-STDIN \$(grep -c '^user = ' /dev/stdin)" >> "$T/curl.log"; fi
+  echo "FR-ARGS \${*:1:\$#-1}" >> "$T/curl.log"
+  st="\$(cat "$T/page-status" 2>/dev/null)"; st="\${st:-200}"
+  [ -f "$T/page-fail" ] && st=401
   css="\$(cat "$T/page-css" 2>/dev/null)"
   nfr=\$(grep -c 'pkde-fresh-render' "$T/curl.log")
   if [ -f "$T/page-css-then" ] && [ "\$nfr" -ge 2 ]; then css="\$(cat "$T/page-css-then")"; fi
-  if [ -n "\$css" ]; then echo "<link rel=stylesheet href=/app/themes/sage/public/build/assets/\$css>"; else echo "<html>no stylesheet</html>"; fi
+  if [ "\$st" = 200 ]; then
+    if [ -n "\$css" ]; then body="<link rel=stylesheet href=/app/themes/sage/public/build/assets/\$css>"; else body="<html>no stylesheet</html>"; fi
+  else body=""; fi
+  if [ -n "\$out" ]; then printf '%s' "\$body" > "\$out"; printf '%s' "\$st"; else printf '%s' "\$body"; fi
   exit 0 ;;
 esac
 nprobe=\$(grep -c 'zz-opcache' "$T/curl.log")
@@ -288,7 +297,7 @@ check "off: no page request, exit 0" "[ $rc -eq 0 ] && grep -q 'Fresh render che
 resetenv
 : > $T/curl.log; mkrelease R38; mkmanifest R38 app-NEW.css; touch $T/page-fail
 bash $S $BASE R38 5 >$T/s9i6.log 2>&1; rc=$?
-check "page cannot be fetched (401): not done, nothing guessed, exit 0" "[ $rc -eq 0 ] && grep -q 'Fresh render check: not done, the home page could not be fetched' $T/s9i6.log"
+check "behind the staging gate (401, no credentials): skipped with the reason, nothing guessed, exit 0" "[ $rc -eq 0 ] && grep -q 'Fresh render check: skipped: behind the staging gate (HTTP 401; set STAGING_GATE_AUTH' $T/s9i6.log"
 rm -f $T/page-fail
 : > $T/curl.log; mkrelease R39
 bash $S $BASE R39 5 >$T/s9i7.log 2>&1; rc=$?
@@ -552,12 +561,22 @@ BASE=$OLD_BASE
 
 echo "=== Scenario 19: ONE-COMMAND ROLLBACK, the release name 'previous' (WP-95) ==="
 OLD_BASE=$BASE; BASE=$T/deploy/rollback; mkdir -p $BASE/shared; cp $OLD_BASE/shared/.env $BASE/shared/.env; printf 'WP_HOME=https://example.test/\n' >> $BASE/shared/.env
-# the curl stub of scenario 9 answers for the base that existed then; this scenario has its own base, so it gets its own small stub
+# the curl stub of scenario 9 answers for the base that existed then; this scenario has its own base, so it gets its own small stub (it also understands the
+# fresh render check's -o/-w interface: the status comes from $T/page-status, default 200, and --config - means the gate's credentials arrive on stdin)
 cat > "$T/bin/curl" <<STUB
 #!/bin/bash
 url="\${@: -1}"
 echo "\$url" >> "$T/curl.log"
-case "\$url" in *pkde-fresh-render*) echo "<html>no stylesheet</html>"; exit 0 ;; esac
+case "\$url" in *pkde-fresh-render*)
+  out=""; cfg=""; a=("\$@")
+  for ((i=0;i<\${#a[@]};i++)); do case "\${a[i]}" in -o) out="\${a[i+1]}";; --config) cfg=1;; esac; done
+  if [ -n "\$cfg" ]; then echo "GATE-CONFIG-ON-STDIN \$(grep -c '^user = ' /dev/stdin)" >> "$T/gate.log"; fi
+  echo "FR-ARGS \${*:1:\$#-1}" >> "$T/gate.log"
+  st="\$(cat "$T/page-status" 2>/dev/null)"; st="\${st:-200}"
+  [ "\$st" = 200 ] && body="<html>no stylesheet</html>" || body=""
+  if [ -n "\$out" ]; then printf '%s' "\$body" > "\$out"; printf '%s' "\$st"; else printf '%s' "\$body"; fi
+  exit 0 ;;
+esac
 echo "ok \$(basename "\$(readlink -f "$BASE/current")")"
 STUB
 chmod +x "$T/bin/curl"
@@ -581,6 +600,44 @@ bash $S $BASE previous 9 >$T/s19c.log 2>&1; rc=$?
 check "nothing older left: exits 1 and current is unchanged" "[ $rc -eq 1 ] && grep -q 'no complete release older' $T/s19c.log && [ \"\$(readlink $BASE/current)\" = $BASE/releases/20261101000000 ]"
 bash $S $BASE 20261104000000 9 >/dev/null 2>&1
 check "rolling forward again by name still works" "[ \"\$(readlink $BASE/current)\" = $BASE/releases/20261104000000 ]"
+BASE=$OLD_BASE
+
+echo "=== Scenario 20: the fresh render check behind the staging gate, a 5xx home page, and the User INI Guard (TPL-191, WP-85) ==="
+OLD_BASE=$BASE; BASE=$T/deploy/gate; mkdir -p $BASE/shared; cp $OLD_BASE/shared/.env $BASE/shared/.env; printf 'WP_HOME=https://example.test/\n' >> $BASE/shared/.env
+mkrelease G1
+rm -f $T/page-status $T/gate.log; : > $T/curl.log
+bash $S $BASE G1 5 >$T/s20a.log 2>&1
+check "the User INI Guard block is added once, denying .user.ini, and announced" "[ \$(grep -c 'BEGIN User INI Guard' $BASE/shared/.htaccess) -eq 1 ] && grep -qF '<Files \".user.ini\">' $BASE/shared/.htaccess && grep -qF 'Require all denied' $BASE/shared/.htaccess && grep -q 'Added the User INI Guard block' $T/s20a.log"
+mkrelease G2
+bash $S $BASE G2 5 >$T/s20b.log 2>&1
+check "next release: still once, not announced again" "[ \$(grep -c 'BEGIN User INI Guard' $BASE/shared/.htaccess) -eq 1 ] && ! grep -q 'Added the User INI Guard' $T/s20b.log"
+awk '/# BEGIN User INI Guard/{skip=1} !skip{print} /# END User INI Guard/{skip=0}' $BASE/shared/.htaccess > $T/ht.nouini && cat $T/ht.nouini > $BASE/shared/.htaccess
+mkrelease G3
+bash $S $BASE G3 5 >$T/s20c.log 2>&1
+check "a dropped guard is added again and the other blocks survive" "[ \$(grep -c 'BEGIN User INI Guard' $BASE/shared/.htaccess) -eq 1 ] && grep -q 'BEGIN Security Headers' $BASE/shared/.htaccess"
+
+# the gate: 401 without credentials -> skipped; with STAGING_GATE_AUTH the credentials reach curl on stdin, never in an argument or the log; a refusal -> skipped
+printf '401' > $T/page-status; rm -f $T/gate.log; mkrelease G4; mkmanifest G4 app-NEW.css
+bash $S $BASE G4 5 >$T/s20d.log 2>&1; rc=$?
+check "401 without credentials: skipped: behind the staging gate, exit 0" "[ $rc -eq 0 ] && grep -q 'Fresh render check: skipped: behind the staging gate (HTTP 401; set STAGING_GATE_AUTH=user:password in shared/.env' $T/s20d.log"
+printf 'STAGING_GATE_AUTH=gateuser:s3cr"et\\pass\n' >> $BASE/shared/.env
+rm -f $T/gate.log; mkrelease G5; mkmanifest G5 app-NEW.css
+bash $S $BASE G5 5 >$T/s20e.log 2>&1; rc=$?
+check "401 WITH credentials in the env file: they are sent (a config line on stdin), the gate's refusal is reported as skipped" "[ $rc -eq 0 ] && grep -q 'GATE-CONFIG-ON-STDIN 1' $T/gate.log && grep -q 'the staging gate answered 401 to the credentials in STAGING_GATE_AUTH' $T/s20e.log"
+check "the credentials appear in no argument, no log and no output" "! grep -q 's3cr' $T/gate.log && ! grep -q 's3cr' $T/s20e.log && ! grep -q 's3cr' $T/curl.log && ! grep -q 'gateuser' $T/gate.log"
+printf '200' > $T/page-status; rm -f $T/gate.log; mkrelease G6; mkmanifest G6 app-NEW.css
+bash $S $BASE G6 5 >$T/s20f.log 2>&1
+check "200 with credentials: the check goes on (this stub's page links no app stylesheet: not done, and says so)" "grep -q 'GATE-CONFIG-ON-STDIN 1' $T/gate.log && grep -q 'links no app-<hash>.css stylesheet' $T/s20f.log"
+
+# a 5xx home page fails the deploy (exit 3 from the post exec), whatever else went right
+printf '503' > $T/page-status; mkrelease G7; mkmanifest G7 app-NEW.css
+bash $S $BASE G7 5 >$T/s20g.log 2>&1; rc=$?
+check "503 home page: BROKEN SITE, the run ends red (exit 3) and names the rollback command" "[ $rc -eq 3 ] && grep -q 'BROKEN SITE: the home page of https://example.test answers HTTP 503' $T/s20g.log && grep -q 'activate-release.sh $BASE previous' $T/s20g.log && grep -q 'answers HTTP 503 (see BROKEN SITE above). Exiting 3' $T/s20g.log"
+check "503: the release is live all the same" "[ \"\$(readlink $BASE/current)\" = $BASE/releases/G7 ]"
+printf 'PKDE_FRESH_RENDER_CHECK=warn\n' >> $BASE/shared/.env; mkrelease G8; mkmanifest G8 app-NEW.css
+bash $S $BASE G8 5 >$T/s20h.log 2>&1; rc=$?
+check "503 with PKDE_FRESH_RENDER_CHECK=warn: warns, exit 0" "[ $rc -eq 0 ] && grep -q 'BROKEN SITE' $T/s20h.log"
+rm -f $T/page-status
 BASE=$OLD_BASE
 
 echo; echo "RESULT: $pass passed, $fail failed"; exit $fail

@@ -375,8 +375,11 @@ reset_web_opcache() {
 # string (the page cache does not store a URL with one) and compares the stylesheet it links (assets/app-<hash>.css) with the one in THIS release's Vite
 # manifest. Equal: fine. Different: the web PHP is still running the previous release; the probe is requested again (another reset) and the page re-read,
 # up to 4 times, and a page that still differs after that marks the deploy FAILED (the release stays live; the run ends red at its end, with the reason).
-# It never guesses: when the manifest has no app.css entry, the page cannot be fetched (401, 403, 5xx, a coming-soon gate) or links no such stylesheet,
-# it says so and checks nothing. PKDE_FRESH_RENDER_CHECK in shared/.env: fail (default), warn (a mismatch only warns) or off.
+# It never guesses: when the manifest has no app.css entry, the page cannot be fetched (no answer, a coming-soon gate) or links no such stylesheet,
+# it says so and checks nothing. Behind the staging gate (HTTP Basic auth, TPL-191) it sends the gate's "user:password" from STAGING_GATE_AUTH in shared/.env
+# when that is set (to curl on stdin, never on a command line, never printed); a 401/403 without it, or with a refused one, is "skipped: behind the staging
+# gate". A home page that answers 5xx is a FAILED deploy (the release is live and the run ends red), not "not done": the site is broken.
+# PKDE_FRESH_RENDER_CHECK in shared/.env: fail (default), warn (a mismatch or a 5xx only warns) or off.
 verify_fresh_render() {
     local url="$1" token="$2" mode expected served manifest page attempt=1 tries=4
     mode="$(sed -n 's/^PKDE_FRESH_RENDER_CHECK=//p' "$SHARED_DIR/.env" 2>/dev/null | tr -d "\"'\r" | tail -1)" || mode=""
@@ -391,18 +394,49 @@ verify_fresh_render() {
         return 0
     fi
 
+    local gate code body_file="$(mktemp)"
+    gate="$(sed -n 's/^STAGING_GATE_AUTH=//p' "$SHARED_DIR/.env" 2>/dev/null | tr -d "\"'\r" | tail -1)" || gate=""
+
     while :; do
-        if ! page="$(curl -fsSL --max-time 30 -A 'pkde-deploy-fresh-render-check' "$url/?pkde-fresh-render=$token-$attempt" 2>&1)"; then
-            echo "Fresh render check: not done, the home page could not be fetched (${page:0:160})" >&2
-            return 0
+        # -w prints the status only; the gate's credentials go to curl on stdin as a config line (backslash and quote escaped), so they are on no command line
+        if [ -n "$gate" ]; then
+            code="$(printf 'user = "%s"\n' "$(printf '%s' "$gate" | sed 's/\\/\\\\/g; s/"/\\"/g')" | curl --config - -sSL -o "$body_file" -w '%{http_code}' --max-time 30 -A 'pkde-deploy-fresh-render-check' "$url/?pkde-fresh-render=$token-$attempt" 2>/dev/null)" || code="000"
+        else
+            code="$(curl -sSL -o "$body_file" -w '%{http_code}' --max-time 30 -A 'pkde-deploy-fresh-render-check' "$url/?pkde-fresh-render=$token-$attempt" 2>/dev/null)" || code="000"
         fi
+        page="$(cat "$body_file" 2>/dev/null)"
+        case "$code" in
+            200) ;;
+            401|403)
+                rm -f "$body_file"
+                if [ -n "$gate" ]; then
+                    echo "Fresh render check: skipped, the staging gate answered $code to the credentials in STAGING_GATE_AUTH (shared/.env): check them"
+                else
+                    echo "Fresh render check: skipped: behind the staging gate (HTTP $code; set STAGING_GATE_AUTH=user:password in shared/.env to check)"
+                fi
+                return 0 ;;
+            5??)
+                rm -f "$body_file"
+                echo "WARN: ================================================================" >&2
+                echo "WARN: BROKEN SITE: the home page of $url answers HTTP $code after release $RELEASE was activated." >&2
+                echo "WARN: the release is live; read the PHP error log, or roll back: bash $BASE/activate-release.sh $BASE previous" >&2
+                echo "WARN: ================================================================" >&2
+                [ "$mode" = fail ] && printf '%s\n%s\n' "$RELEASE" "http$code" > "$OPCACHE_STALE_MARKER"
+                return 0 ;;
+            *)
+                rm -f "$body_file"
+                echo "Fresh render check: not done, the home page could not be fetched (HTTP $code)" >&2
+                return 0 ;;
+        esac
         served="$(printf '%s' "$page" | grep -o 'assets/app-[A-Za-z0-9_-]*\.css' | head -1)" || served=""
         served="${served##*/}"
         if [ -z "$served" ]; then
+            rm -f "$body_file"
             echo "Fresh render check: not done, the page links no app-<hash>.css stylesheet"
             return 0
         fi
         if [ "$served" = "$expected" ]; then
+            rm -f "$body_file"
             echo "Fresh render check: the uncached home page links $served, as this release's manifest does"
             return 0
         fi
@@ -420,8 +454,9 @@ verify_fresh_render() {
     echo "WARN: check opcache.restrict_api / opcache.revalidate_path / realpath_cache_ttl and whether more than one PHP pool serves the site (see the Web PHP lines above)," >&2
     echo "WARN: restart PHP for the package in the My20i panel, then request the site and re-run this check by hand." >&2
     echo "WARN: ================================================================" >&2
+    rm -f "$body_file"
     if [ "$mode" = fail ]; then
-        printf '%s\n' "$RELEASE" > "$OPCACHE_STALE_MARKER"
+        printf '%s\n%s\n' "$RELEASE" "stale" > "$OPCACHE_STALE_MARKER"
     fi
     return 0
 }
@@ -620,6 +655,23 @@ Header always set Permissions-Policy "camera=(), microphone=(), usb=(), interest
 # END Security Headers
 EOF
     echo "Added the Security Headers block to $HTACCESS"
+fi
+
+# User INI Guard (WP-85, TPL-188/191): web/.user.ini holds the opcache setting on every site and, with Wordfence Extended Protection, the path of the firewall
+# shim. A default Apache serves it (200; checked in Apache 2.4), so it is denied here for every site (20i's own stack already answers 403 on bp, rp, jsd and mds:
+# belt and braces). <IfModule mod_authz_core.c>: no Apache 2.4 authorisation, no rule and never a 500. Added once, re-added when W3TC drops it.
+if ! grep -q '# BEGIN User INI Guard' "$HTACCESS"; then
+    cat >>"$HTACCESS" <<'EOF'
+
+# BEGIN User INI Guard
+<Files ".user.ini">
+<IfModule mod_authz_core.c>
+Require all denied
+</IfModule>
+</Files>
+# END User INI Guard
+EOF
+    echo "Added the User INI Guard block to $HTACCESS"
 fi
 
 # Staging Noindex (WP-91, TPL-176): on a server whose .env says WP_ENV is not production, every response, static files included, carries
@@ -857,8 +909,12 @@ empty_trash
 
 # The fresh render check (above) found the web PHP still on the previous release: the release is live and everything else ran, and the run ends red so a person sees it.
 if [ -f "$OPCACHE_STALE_MARKER" ]; then
-    stale_release="$(cat "$OPCACHE_STALE_MARKER" 2>/dev/null)"
+    stale_release="$(sed -n 1p "$OPCACHE_STALE_MARKER" 2>/dev/null)"
+    stale_reason="$(sed -n 2p "$OPCACHE_STALE_MARKER" 2>/dev/null)"
     rm -f "$OPCACHE_STALE_MARKER"
-    echo "ERROR: release ${stale_release:-$RELEASE} is activated but the web PHP still renders the PREVIOUS release (see STALE RELEASE above). Exiting 3." >&2
+    case "$stale_reason" in
+        http5??) echo "ERROR: release ${stale_release:-$RELEASE} is activated but the home page answers HTTP ${stale_reason#http} (see BROKEN SITE above). Exiting 3." >&2 ;;
+        *) echo "ERROR: release ${stale_release:-$RELEASE} is activated but the web PHP still renders the PREVIOUS release (see STALE RELEASE above). Exiting 3." >&2 ;;
+    esac
     exit 3
 fi
