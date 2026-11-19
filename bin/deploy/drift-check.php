@@ -471,7 +471,7 @@ function pkde_drift_evaluate(array $f): array
     }
 
     if (in_array('relevanssi', (array) ($f['active_plugins'] ?? []), true) && array_key_exists('relevanssi_indexed', $f)) {
-        $cmp('Relevanssi index is built (searches find products)', (int) $f['relevanssi_indexed'] > 0, 'the Relevanssi index is empty: run wp eval-file vendor/pkde/sage-kit/bin/relevanssi-settings.php (it rebuilds the index)', true);
+        $cmp('Relevanssi index is built (searches find products)', (int) $f['relevanssi_indexed'] > 0, 'the Relevanssi index is empty: run bash bin/deploy/wp.sh eval-file bin/deploy/relevanssi-settings.php (it rebuilds the index)', true);
     }
 
     // Breadcrumbs (MGR-77 parity): the kit owns the trail. Its filters force Rank Math's settings to the standard (" / ", "Home") and the kit declares

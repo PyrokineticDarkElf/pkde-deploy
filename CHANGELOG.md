@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026.11.19.10
+
+- **`bin/deploy/relevanssi-settings.php`** (moved from the kit's `bin/`; TPL-202 U-8): the shop search settings and index rebuild, run once per environment. Ships in the artifact. The drift row's hint names the new path. Content unchanged apart from the header.
+
 ## 2026.11.19.9
 
 One Rank Math baseline part on its own: "Archives" off the titles (WP-99 B, TPL-201; owner 2026-11-19). **Adopt:** bump `pkde/deploy` and the workflow tags (January train); then EVERY site runs the titles part on staging after its next deploy and on production in the window.
