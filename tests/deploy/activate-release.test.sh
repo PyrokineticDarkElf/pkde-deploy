@@ -550,4 +550,37 @@ bash $S $BASE QF3 5 >$T/s18c.log 2>&1
 check "a dropped guard is added again, still above WordPress's block, and the other blocks survive" "[ \$(grep -c 'BEGIN Query Flood Guard' $BASE/shared/.htaccess) -eq 1 ] && [ \$(grep -n 'BEGIN Query Flood Guard' $BASE/shared/.htaccess | cut -d: -f1) -lt \$(grep -n 'BEGIN WordPress' $BASE/shared/.htaccess | cut -d: -f1) ] && grep -q 'BEGIN Security Headers' $BASE/shared/.htaccess && grep -q 'BEGIN Upload Cache' $BASE/shared/.htaccess"
 BASE=$OLD_BASE
 
+echo "=== Scenario 19: ONE-COMMAND ROLLBACK, the release name 'previous' (WP-95) ==="
+OLD_BASE=$BASE; BASE=$T/deploy/rollback; mkdir -p $BASE/shared; cp $OLD_BASE/shared/.env $BASE/shared/.env; printf 'WP_HOME=https://example.test/\n' >> $BASE/shared/.env
+# the curl stub of scenario 9 answers for the base that existed then; this scenario has its own base, so it gets its own small stub
+cat > "$T/bin/curl" <<STUB
+#!/bin/bash
+url="\${@: -1}"
+echo "\$url" >> "$T/curl.log"
+case "\$url" in *pkde-fresh-render*) echo "<html>no stylesheet</html>"; exit 0 ;; esac
+echo "ok \$(basename "\$(readlink -f "$BASE/current")")"
+STUB
+chmod +x "$T/bin/curl"
+: > $T/curl.log
+bash $S $BASE previous >$T/s19x.log 2>&1; rc=$?
+check "no current at all: exits 1 with the reason, nothing created" "[ $rc -eq 1 ] && grep -q 'no .previous. release' $T/s19x.log && [ ! -e $BASE/current ]"
+for n in 20261101000000 20261102000000 20261103000000 20261104000000; do mkrelease $n; done
+rm -rf $BASE/releases/20261103000000/vendor   # a half-copied release in the middle
+for n in 20261101000000 20261102000000 20261104000000; do bash $S $BASE $n 9 >/dev/null 2>&1; done
+check "setup: current is the newest" "[ \"\$(readlink $BASE/current)\" = $BASE/releases/20261104000000 ]"
+: > $T/curl.log
+bash $S $BASE previous 9 >$T/s19a.log 2>&1; rc=$?
+check "previous: exits 0" "[ $rc -eq 0 ]"
+check "previous: current -> the complete release before it (the half-copied one is skipped)" "[ \"\$(readlink $BASE/current)\" = $BASE/releases/20261102000000 ]"
+check "previous: says what it did, code only" "grep -q 'Rollback: current is 20261104000000; activating the previous release 20261102000000 (code only' $T/s19a.log"
+check "previous: the web opcache is reset like an activation" "grep -q 'Web opcache reset; the web server serves release 20261102000000' $T/s19a.log && grep -Eq '^https://example.test/zz-opcache-[0-9a-f]{32}\\.php\$' $T/curl.log"
+check "previous: the shared blocks are asserted again" "grep -q 'BEGIN Security Headers' $BASE/shared/.htaccess"
+bash $S $BASE previous 9 >$T/s19b.log 2>&1
+check "previous again: goes one further back" "[ \"\$(readlink $BASE/current)\" = $BASE/releases/20261101000000 ]"
+bash $S $BASE previous 9 >$T/s19c.log 2>&1; rc=$?
+check "nothing older left: exits 1 and current is unchanged" "[ $rc -eq 1 ] && grep -q 'no complete release older' $T/s19c.log && [ \"\$(readlink $BASE/current)\" = $BASE/releases/20261101000000 ]"
+bash $S $BASE 20261104000000 9 >/dev/null 2>&1
+check "rolling forward again by name still works" "[ \"\$(readlink $BASE/current)\" = $BASE/releases/20261104000000 ]"
+BASE=$OLD_BASE
+
 echo; echo "RESULT: $pass passed, $fail failed"; exit $fail

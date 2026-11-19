@@ -11,9 +11,14 @@
 #
 # Usage: activate-release.sh <base_path> <release_timestamp> [keep_count]
 #
-# Rollback: re-run this same script against an OLDER release timestamp that's
-# still on disk under <BASE>/releases/ — it doesn't care whether RELEASE is
-# newer or older than whatever <BASE>/current currently points at.
+# Rollback, in ONE command (WP-95): the release name `previous` means the complete release just before the one <BASE>/current points at:
+#
+#   bash <BASE>/activate-release.sh <BASE> previous
+#
+# (the deploy copies this script to <BASE> on every run). It is the same code path as a deploy, so the symlink switch, the opcache reset of the web
+# PHP, the .htaccess blocks and the fresh render check all run again. Run it twice to go back two releases. It rolls back CODE only: the database,
+# uploads and shared/ are not versioned and stay as they are. A specific older release also works: re-run this script with its timestamp, it doesn't
+# care whether RELEASE is newer or older than whatever <BASE>/current currently points at.
 #
 # --- What is persistent, and how (the rule of thumb) -----------------------
 # A release is disposable; anything a plugin or an admin writes at runtime
@@ -58,6 +63,26 @@ KEEP="${3:-5}"
 # seems to close ONE exec channel after about 5 to 6 minutes (tcs run 39599779954 dropped at 5 min 36 s, in the silences of an
 # rm -rf on NFS and of wp cache flush); splitting keeps each exec short, and each prints how long it ran.
 MODE="${4:-all}"
+if [ "$RELEASE" = previous ]; then
+    CURRENT_NAME="$(basename "$(readlink -f "$BASE/current" 2>/dev/null)")"
+    if [ ! -L "$BASE/current" ] || [ ! -d "$BASE/releases/$CURRENT_NAME" ]; then
+        echo "ERROR: $BASE/current is not a link to a release under $BASE/releases, so there is no 'previous' release to go back to." >&2
+        exit 1
+    fi
+    RELEASE=""
+    # Release names are UTC timestamps (YYYYMMDDHHMMSS), so the name order is the deploy order. A half-copied release (no web/ or vendor/) is skipped.
+    for candidate in $(ls -1 "$BASE/releases" | sort -r); do
+        if [[ "$candidate" < "$CURRENT_NAME" ]] && [ -d "$BASE/releases/$candidate/web" ] && [ -d "$BASE/releases/$candidate/vendor" ]; then
+            RELEASE="$candidate"
+            break
+        fi
+    done
+    if [ -z "$RELEASE" ]; then
+        echo "ERROR: no complete release older than the current one ($CURRENT_NAME) is left under $BASE/releases (kept: $(ls -1 "$BASE/releases" | tr '\n' ' ')). Nothing was changed." >&2
+        exit 1
+    fi
+    echo "Rollback: current is $CURRENT_NAME; activating the previous release $RELEASE (code only; the database and shared/ stay as they are)"
+fi
 case "$MODE" in all|activate|post) ;; *) echo "ERROR: the fourth argument must be all, activate or post (got '$MODE')" >&2; exit 2 ;; esac
 stage() { echo "[+${SECONDS}s] $*"; }
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026.11.19.5
+
+One-command rollback of a release (WP-95, TPL-187). **Adopt:** bump `pkde/deploy` and the workflow tags (the deploy copies the script to the server on every run, so the command exists after a site's next deploy to staging or production).
+
+- **`bash <DEPLOY_PATH>/activate-release.sh <DEPLOY_PATH> previous`** switches `current` back to the complete release just before it (names are UTC timestamps; a release without `web/` or `vendor/` is skipped). Same code path as a deploy, so the opcache reset, the "web PHP serves release X" check, the `.htaccess` blocks and the flushes all run. Repeat to go back further; with no earlier complete release, or no `current`, it exits 1 and changes nothing. Code only: the database and `shared/` are not rolled back. Tested in a Linux container: scenario 19 of `activate-release.test.sh` (166 checks in all): the no-current error, skipping a half-copied release, the opcache reset line, going two back, nothing older left, and rolling forward by name. NOT rehearsed on 20i.
+
 ## 2026.11.19.4
 
 Wordfence Extended Protection: pilot preparation (WP-85, TPL-188). **Adopt:** bump `pkde/deploy` and the workflow tags; nothing changes for a site that has not opted in.
