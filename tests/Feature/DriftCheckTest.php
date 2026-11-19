@@ -814,3 +814,33 @@ it('fails a declared shop filter source that does not resolve, and lists the gro
     $info = array_values(array_filter(pkde_drift_evaluate($facts), fn($r) => $r[1] === 'Shop filters: groups'))[0];
     expect($info[2])->toContain('not declared')->toContain('price, product_cat');
 });
+
+it('lists kit view overrides with how far they are from the kit\'s view, INFO only (TPL-199)', function () {
+    expect(pkde_drift_line_diff("a\nb\nc\n", "a\nb\nc\n"))->toBe(0)
+        ->and(pkde_drift_line_diff("a\nb\nc\n", "  a \n\nc\nb"))->toBe(0) // whitespace and order do not count
+        ->and(pkde_drift_line_diff("a\nb\n", "a\nx\ny\n"))->toBe(3);
+
+    $theme = sys_get_temp_dir() . '/pkde-theme-' . bin2hex(random_bytes(4));
+    mkdir("$theme/resources/views/vendor/pkde-kit/partials/blocks", 0777, true);
+    mkdir("$theme/vendor/pkde/sage-kit/resources/views/partials/blocks", 0777, true);
+    file_put_contents("$theme/vendor/pkde/sage-kit/resources/views/partials/blocks/tiles.blade.php", "one\ntwo\nthree\nextra tile\n");
+    file_put_contents("$theme/vendor/pkde/sage-kit/resources/views/partials/same.blade.php", "same\n");
+    file_put_contents("$theme/resources/views/vendor/pkde-kit/partials/blocks/tiles.blade.php", "one\ntwo\nthree\n"); // lost a line
+    file_put_contents("$theme/resources/views/vendor/pkde-kit/partials/same.blade.php", "same\n"); // identical
+    file_put_contents("$theme/resources/views/vendor/pkde-kit/partials/gone.blade.php", "x\n"); // the kit dropped it
+    file_put_contents("$theme/resources/views/vendor/pkde-kit/README.md", "not a view\n");
+
+    expect(pkde_drift_kit_overrides($theme))->toBe(['partials/blocks/tiles.blade.php' => 1, 'partials/gone.blade.php' => -1, 'partials/same.blade.php' => 0]);
+
+    $facts = pkdeGoodFacts();
+    $facts['kit_overrides'] = pkde_drift_kit_overrides($theme);
+    $row = array_values(array_filter(pkde_drift_evaluate($facts), fn($r) => $r[1] === 'Kit view overrides'))[0];
+    expect($row[0])->toBe('INFO')->and($row[2])->toContain('3:')->toContain('tiles.blade.php (1 lines differ')->toContain('same.blade.php (identical to the kit: delete it)')->toContain('gone.blade.php (the kit has no such view any more)');
+
+    // no override folder, or no kit installed: nothing to say
+    expect(pkde_drift_kit_overrides(sys_get_temp_dir() . '/pkde-no-theme'))->toBe([]);
+    $facts['kit_overrides'] = [];
+    expect(pkdeStatuses($facts))->not->toHaveKey('Kit view overrides');
+
+    exec('rm -rf ' . escapeshellarg($theme));
+});

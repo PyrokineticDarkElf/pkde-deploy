@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026.11.19.8
+
+Drift: kit view overrides (TPL-199, triage TPL-189). **Adopt:** bump `pkde/deploy` and the workflow tags (January train).
+
+- **INFO row "Kit view overrides":** every file under the theme's `resources/views/vendor/pkde-kit/**` is compared with the kit's current view of the same path (lines that differ, both ways; order and whitespace do not count). The row lists each with how many lines differ, marks one identical to the kit's ("delete it") and one the kit no longer has. Never a FAIL (manager ruling). It would have shown bb's category tiles and tcs's product card falling behind the kit. Read only. Run read-only on the real themes: tcs 2 overrides (52 and 69 lines differ), bb 1 (37), jsd 5 (2 to 24), js none. Pest 117.
+
 ## 2026.11.19.7
 
 Shop filters v2: the Apache cap and the drift rows (WP-96, TPL-192). **Adopt:** bump `pkde/deploy` and the workflow tags. NOT part of the December train.

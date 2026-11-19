@@ -114,6 +114,47 @@ function pkde_drift_personal_views(string $dir): array
 }
 
 /**
+ * How many lines of two texts are not in the other (a set difference both ways, so a moved line costs nothing and an added or changed one counts). Pure.
+ */
+function pkde_drift_line_diff(string $a, string $b): int
+{
+    $lines = fn(string $text) => array_values(array_filter(array_map('trim', explode("\n", $text)), fn($l) => $l !== ''));
+    $left = $lines($a);
+    $right = $lines($b);
+
+    return count(array_diff($left, $right)) + count(array_diff($right, $left));
+}
+
+/**
+ * The theme's overrides of kit views (resources/views/vendor/pkde-kit/**) against the kit's current view of the same path (TPL-199): how many lines differ, and whether
+ * the override is identical to the kit's (then it can be deleted). A copy of a view falls behind the kit without any test failing (bb's category tiles lost the "Shop all"
+ * tile, tcs's product card lost the rating position); this makes it visible. Read only. Returns path => lines that differ (0 = identical), or null when there is no kit.
+ *
+ * @return array<string, int>|null
+ */
+function pkde_drift_kit_overrides(string $themeDir): ?array
+{
+    $overrides = $themeDir . '/resources/views/vendor/pkde-kit';
+    $kit = $themeDir . '/vendor/pkde/sage-kit/resources/views';
+    if (! is_dir($overrides) || ! is_dir($kit)) {
+        return is_dir($overrides) ? null : [];
+    }
+
+    $found = [];
+    foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($overrides, FilesystemIterator::SKIP_DOTS)) as $file) {
+        if (! $file->isFile() || ! str_ends_with($file->getFilename(), '.blade.php')) {
+            continue;
+        }
+        $relative = ltrim(substr($file->getPathname(), strlen($overrides)), '/');
+        $original = $kit . '/' . $relative;
+        $found[$relative] = is_file($original) ? pkde_drift_line_diff((string) file_get_contents($file->getPathname()), (string) file_get_contents($original)) : -1; // -1: the kit has no such view
+    }
+    ksort($found);
+
+    return $found;
+}
+
+/**
  * The Contact Form 7 lookup keys the theme asks for (App\form_id('x'), App\form_shortcode('x')) and the files that still find a form by its title (TPL-186).
  * Read only; scans the theme's PHP and Blade files in the given directories. Returns ['keys' => list<string>, 'by_title' => list<string> relative paths].
  *
@@ -479,6 +520,15 @@ function pkde_drift_evaluate(array $f): array
         }
     }
 
+    // Kit view overrides (TPL-199): INFO only. A copy of a kit view falls behind the kit without a test failing; the row lists each with how many lines differ.
+    if (is_array($f['kit_overrides'] ?? null) && $f['kit_overrides'] !== []) {
+        $listed = [];
+        foreach ($f['kit_overrides'] as $path => $differ) {
+            $listed[] = $differ === 0 ? "$path (identical to the kit: delete it)" : ($differ < 0 ? "$path (the kit has no such view any more)" : "$path ($differ lines differ from the kit's)");
+        }
+        $add('INFO', 'Kit view overrides', count($listed) . ': ' . implode('; ', $listed));
+    }
+
     // Form lookup keys (TPL-186): INFO for which forms carry one; FAIL only when a theme file asks App\form_id('x') and no form has that key; INFO for a title lookup left over.
     if ($f['cf7_active'] ?? false) {
         $tagged = [];
@@ -831,6 +881,7 @@ function pkde_drift_collect(): array
         'cache_basket_visitors' => pkde_w3tc_cache_basket_visitors(),
         'kit_cache_safe' => function_exists('App\\no_page_cache'),
         'personal_views' => pkde_drift_personal_views(get_template_directory() . '/resources/views'),
+        'kit_overrides' => pkde_drift_kit_overrides(get_template_directory()),
         'turnstile' => [
             'appearance' => get_option('cfturnstile_appearance', 'always'),
             'login' => get_option('cfturnstile_login'),
