@@ -549,6 +549,7 @@ OLD_BASE=$BASE
 mkrelease QF1; printf 'WP_ENV=production\n' > $BASE/shared/.env
 bash $S $BASE QF1 5 >$T/s18a.log 2>&1
 check "Query Flood Guard present exactly once, with the 410 rule" "[ \$(grep -c 'BEGIN Query Flood Guard' $BASE/shared/.htaccess) -eq 1 ] && grep -qF 'RewriteRule ^ - [G,L]' $BASE/shared/.htaccess && grep -qF '(^|&)(filter_[a-z0-9_-]+|query_type_[a-z0-9_-]+|rating_filter)=' $BASE/shared/.htaccess"
+check "the block carries the sage_filter_ cap: 120 occurrences, counted with an atomic group" "grep -qF 'RewriteCond %{QUERY_STRING} ^(?>.*?(?:^|&)sage_filter_){120}' $BASE/shared/.htaccess"
 check "the guard comes BEFORE the WordPress block (WordPress's catch-all would end the pass first)" "[ \$(grep -n 'BEGIN Query Flood Guard' $BASE/shared/.htaccess | cut -d: -f1) -lt \$(grep -n 'BEGIN WordPress' $BASE/shared/.htaccess | cut -d: -f1) ]"
 mkrelease QF2
 bash $S $BASE QF2 5 >$T/s18b.log 2>&1
@@ -638,6 +639,27 @@ printf 'PKDE_FRESH_RENDER_CHECK=warn\n' >> $BASE/shared/.env; mkrelease G8; mkma
 bash $S $BASE G8 5 >$T/s20h.log 2>&1; rc=$?
 check "503 with PKDE_FRESH_RENDER_CHECK=warn: warns, exit 0" "[ $rc -eq 0 ] && grep -q 'BROKEN SITE' $T/s20h.log"
 rm -f $T/page-status
+BASE=$OLD_BASE
+
+echo "=== Scenario 21: the sage_filter_ cap reaches a Query Flood Guard block from before it, and not one a site emptied (WP-96) ==="
+OLD_BASE=$BASE; BASE=$T/deploy/cap; mkdir -p $BASE/shared; cp $OLD_BASE/shared/.env $BASE/shared/.env; printf 'WP_HOME=https://example.test/\n' >> $BASE/shared/.env
+mkrelease C1
+bash $S $BASE C1 5 >$T/s21a.log 2>&1
+# turn the block into the one 2026.11.19.1 to .6 wrote: no cap pair
+awk '/sage_filter_\)\{120\}/{getline; next} {print}' $BASE/shared/.htaccess > $T/ht.nocap && cat $T/ht.nocap > $BASE/shared/.htaccess
+check "setup: the old block has its rule and no cap" "grep -q '^RewriteRule' $BASE/shared/.htaccess && ! grep -q 'sage_filter_){' $BASE/shared/.htaccess"
+mkrelease C2
+bash $S $BASE C2 5 >$T/s21b.log 2>&1
+check "the cap pair is added inside the existing block, once, and announced" "[ \$(grep -c 'sage_filter_){120}' $BASE/shared/.htaccess) -eq 1 ] && [ \$(grep -c 'BEGIN Query Flood Guard' $BASE/shared/.htaccess) -eq 1 ] && grep -q 'Added the sage_filter_ cap' $T/s21b.log"
+check "it sits before the end of the block's IfModule, above WordPress's block" "[ \$(grep -n 'sage_filter_){120}' $BASE/shared/.htaccess | cut -d: -f1) -lt \$(grep -n 'END Query Flood Guard' $BASE/shared/.htaccess | cut -d: -f1) ] && [ \$(grep -n 'END Query Flood Guard' $BASE/shared/.htaccess | cut -d: -f1) -lt \$(grep -n 'BEGIN WordPress' $BASE/shared/.htaccess | cut -d: -f1) ]"
+mkrelease C3
+bash $S $BASE C3 5 >$T/s21c.log 2>&1
+check "the next release changes nothing" "[ \$(grep -c 'sage_filter_){120}' $BASE/shared/.htaccess) -eq 1 ] && ! grep -q 'Added the sage_filter_ cap' $T/s21c.log"
+# a site that emptied the block (markers only) keeps it empty
+awk '/# BEGIN Query Flood Guard/{print; print "# emptied by the site: it uses WooCommerce layered navigation"; skip=1; next} /# END Query Flood Guard/{skip=0} !skip{print}' $BASE/shared/.htaccess > $T/ht.empty && cat $T/ht.empty > $BASE/shared/.htaccess
+mkrelease C4
+bash $S $BASE C4 5 >$T/s21d.log 2>&1
+check "an emptied block is left alone: no rule, no cap, not added again" "! grep -q 'RewriteCond %{QUERY_STRING}.*filter_' $BASE/shared/.htaccess && [ \$(grep -c 'BEGIN Query Flood Guard' $BASE/shared/.htaccess) -eq 1 ] && grep -q 'emptied by the site' $BASE/shared/.htaccess"
 BASE=$OLD_BASE
 
 echo; echo "RESULT: $pass passed, $fail failed"; exit $fail

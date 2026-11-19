@@ -310,6 +310,14 @@ function pkde_drift_evaluate(array $f): array
         }
     }
 
+    // Shop filters (WP-96): the groups a shop declares in config/shop-filters.php must all resolve; an INFO row lists them so a change between releases shows.
+    if (! empty($f['woocommerce_active']) && is_array($f['shop_filters'] ?? null)) {
+        $sf = $f['shop_filters'];
+        $missing = (array) ($sf['invalid'] ?? []);
+        $cmp('Shop filters: declared groups resolve', $missing === [], 'skipped (not a product taxonomy, price or stock): ' . implode(', ', $missing) . ': fix config/shop-filters.php');
+        $add('INFO', 'Shop filters: groups', ((bool) ($sf['declared'] ?? false) ? 'declared' : 'not declared (the kit\'s defaults)') . ': ' . implode(', ', (array) ($sf['groups'] ?? [])));
+    }
+
     // REST users (WP-88): an anonymous GET of the user routes must not list anybody (401, 403 or 404; the platform module rest-users-private answers 404 in every environment)
     if (is_array($f['rest_users'] ?? null)) {
         foreach (['list' => '/wp/v2/users', 'single' => '/wp/v2/users/<id>'] as $key => $route) {
@@ -592,6 +600,25 @@ function pkde_drift_waf_prepend_facts(): array
     return $facts;
 }
 
+/**
+ * The shop filter declaration as the kit resolved it: whether the site declares its groups, the groups that resolved (sources, in the sidebar's order) and the
+ * declared sources that did not. Null when WooCommerce or a kit with the declaration (WP-96) is absent. Read only.
+ *
+ * @return array{declared: bool, groups: list<string>, invalid: list<string>}|null
+ */
+function pkde_drift_shop_filters_facts(): ?array
+{
+    if (! class_exists('App\\ShopFilters') || ! method_exists('App\\ShopFilters', 'invalidSources') || ! function_exists('wc_get_attribute_taxonomies')) {
+        return null;
+    }
+
+    return [
+        'declared' => \App\ShopFilters::config()['groups'] !== null,
+        'groups' => array_values(array_map(fn($g) => (string) $g['source'], \App\ShopFilters::groups())),
+        'invalid' => \App\ShopFilters::invalidSources(),
+    ];
+}
+
 /** An anonymous request to the user routes, dispatched inside WordPress (so staging's Basic auth and a firewall do not matter): the status codes only. */
 function pkde_drift_rest_users_probe(): array
 {
@@ -799,6 +826,7 @@ function pkde_drift_collect(): array
         'rest_users' => pkde_drift_rest_users_probe(),
         'waf_prepend' => pkde_drift_waf_prepend_facts(),
         'woocommerce_active' => in_array('woocommerce', $active, true),
+        'shop_filters' => pkde_drift_shop_filters_facts(),
         'breadcrumbs' => pkde_drift_breadcrumb_facts(),
         'cache_basket_visitors' => pkde_w3tc_cache_basket_visitors(),
         'kit_cache_safe' => function_exists('App\\no_page_cache'),

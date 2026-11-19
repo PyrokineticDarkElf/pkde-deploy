@@ -791,3 +791,26 @@ it('reports which CF7 forms carry a lookup key, and fails only a key a theme fil
     $facts['cf7_active'] = false;
     expect(pkdeStatuses($facts))->not->toHaveKey('CF7 forms with a lookup key (_pkde_form_key)');
 });
+
+it('fails a declared shop filter source that does not resolve, and lists the groups (WP-96)', function () {
+    $facts = pkdeGoodFacts();
+    expect(pkdeStatuses($facts))->not->toHaveKey('Shop filters: declared groups resolve'); // no shop: no rows
+
+    $facts['woocommerce_active'] = true;
+    $facts['shop_filters'] = ['declared' => true, 'groups' => ['price', 'product_cat', 'pa_colour'], 'invalid' => []];
+    $statuses = pkdeStatuses($facts);
+    expect($statuses['Shop filters: declared groups resolve'])->toBe('PASS')->and($statuses['Shop filters: groups'])->toBe('INFO');
+
+    $facts['shop_filters']['invalid'] = ['pa_colur'];
+    $rows = pkde_drift_evaluate($facts);
+    $row = array_values(array_filter($rows, fn($r) => $r[1] === 'Shop filters: declared groups resolve'))[0];
+    expect($row[0])->toBe('FAIL')->and($row[2])->toContain('pa_colur');
+
+    // the kit without the declaration (an older kit): the facts are null and nothing is said
+    $facts['shop_filters'] = null;
+    expect(pkdeStatuses($facts))->not->toHaveKey('Shop filters: declared groups resolve');
+
+    $facts['shop_filters'] = ['declared' => false, 'groups' => ['price', 'product_cat'], 'invalid' => []];
+    $info = array_values(array_filter(pkde_drift_evaluate($facts), fn($r) => $r[1] === 'Shop filters: groups'))[0];
+    expect($info[2])->toContain('not declared')->toContain('price, product_cat');
+});

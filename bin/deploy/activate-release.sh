@@ -608,6 +608,10 @@ fi
 #  - Matched: a query argument named filter_<name>=, query_type_<name>= or rating_filter= (case-insensitive, at the start or after &).
 #  - NOT matched, by construction: sage_filter_* (the "filter_" is not at the start of the name), and the array-valued filter_product_cat[]= /
 #    filter_product_tag[]= of the earlier custom controls (the name is followed by "[" or "%5B", not "="); the kit stopped migrating those URLs in 2026.11.19.1, so they now do nothing.
+#  - The cap (WP-96): 120 or more sage_filter_ arguments in one query string is answered 410 as well. The kit's own limit is max_active_groups x
+#    max_values_per_group (6 x 10 = 60 with the defaults) and anything above that is a 404 from WordPress; this is the same refusal one step earlier, with a fixed
+#    number above any legal request. A site that raises both kit limits so that their product exceeds 120 changes the number in its shared .htaccess. The
+#    pattern counts occurrences with an atomic group, so it cannot backtrack, and is anchored at the start so the engine does not rescan from every position (an unanchored version took 650 ms on a 7 kB string): ^(?>.*?(?:^|&)sage_filter_){120}.
 #  - A site that really uses WooCommerce's layered-nav widgets or its Product Filter blocks deletes this block from its shared .htaccess and keeps
 #    it out (the block is only added when its marker is missing; delete the lines, leave a "# BEGIN Query Flood Guard" comment to keep it from coming back).
 # Wrapped in <IfModule>: no mod_rewrite = no protection, never a 500. Re-added when W3TC or Wordfence rewrite the file and drop it.
@@ -617,6 +621,8 @@ if ! grep -q '# BEGIN Query Flood Guard' "$HTACCESS"; then
 <IfModule mod_rewrite.c>
 RewriteEngine On
 RewriteCond %{QUERY_STRING} (^|&)(filter_[a-z0-9_-]+|query_type_[a-z0-9_-]+|rating_filter)= [NC]
+RewriteRule ^ - [G,L]
+RewriteCond %{QUERY_STRING} ^(?>.*?(?:^|&)sage_filter_){120}
 RewriteRule ^ - [G,L]
 </IfModule>
 # END Query Flood Guard
@@ -629,6 +635,11 @@ EOF
     fi
     rm -f "$HTACCESS.guard" "$HTACCESS.new"
     echo "Added the Query Flood Guard block to $HTACCESS"
+elif block="$(awk '/# BEGIN Query Flood Guard/{f=1} f{print} /# END Query Flood Guard/{f=0}' "$HTACCESS")" && printf '%s' "$block" | grep -q '^RewriteRule' && ! printf '%s' "$block" | grep -q 'sage_filter_){'; then
+    # A block from before the cap (2026.11.19.1 to .6) that still has its rule gets the cap pair; a block a site emptied (markers only) stays empty.
+    awk '/# BEGIN Query Flood Guard/{inb=1} inb && /<\/IfModule>/ && !done {print "RewriteCond %{QUERY_STRING} ^(?>.*?(?:^|&)sage_filter_){120}"; print "RewriteRule ^ - [G,L]"; done=1} /# END Query Flood Guard/{inb=0} {print}' "$HTACCESS" >"$HTACCESS.new" && cat "$HTACCESS.new" >"$HTACCESS"
+    rm -f "$HTACCESS.new"
+    echo "Added the sage_filter_ cap to the Query Flood Guard block in $HTACCESS"
 fi
 
 # Security headers (WP-91, TPL-180): the four every response should carry, set once for the whole site in the shared .htaccess and re-added when W3TC

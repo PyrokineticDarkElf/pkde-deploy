@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026.11.19.7
+
+Shop filters v2: the Apache cap and the drift rows (WP-96, TPL-192). **Adopt:** bump `pkde/deploy` and the workflow tags. NOT part of the December train.
+
+- **Query Flood Guard: a cap on `sage_filter_` arguments.** 120 or more in one query string are answered 410 before WordPress boots: `RewriteCond %{QUERY_STRING} ^(?>.*?(?:^|&)sage_filter_){120}`. A fixed number above any legal request (the kit's limit is `max_active_groups` x `max_values_per_group`, 6 x 10 = 60 by default; the kit answers anything above that with a 404). The pattern is anchored and uses an atomic group: an unanchored first version took 650 ms on a 7 kB query string (it restarted the scan at every position); anchored it takes 15 ms. Proved in a real Apache 2.4 with the block exactly as written: 119 occurrences 200, 120 410, a longer string 414 (Apache's own limit), the earlier layered-nav rule still 410, `filter_product_cat[]` and a `sage_filter_` inside a value still 200. A block from 2026.11.19.1 to .6 that still has its rule gets the cap pair inserted inside it; a block a site emptied (markers only) stays empty and is not added again (tested, scenario 21; 182 checks in a Linux container).
+- **Drift rows (WooCommerce sites with the kit 2026.11.19.4):** "Shop filters: declared groups resolve" (FAIL names a declared source that is not a product taxonomy, price or stock) and an INFO row listing the declared groups, or the defaults, so a change between releases shows. Proved on the template stack with a deliberately wrong source in a temporary `config/shop-filters.php`. Pest 116.
+
 ## 2026.11.19.6
 
 The fresh render check behind the staging gate, a broken home page, and `/.user.ini` (TPL-191, tcs TCS-131; WP-85). **Adopt:** bump `pkde/deploy` and the workflow tags; a staging behind the HTTP gate adds `STAGING_GATE_AUTH` to its shared env file to have the check really run.
