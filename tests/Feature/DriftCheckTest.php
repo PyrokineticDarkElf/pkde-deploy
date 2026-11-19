@@ -581,7 +581,7 @@ it('checks Wordfence Extended Protection only for a site that opted in, and fail
 function pkdeSeoProbe(array $over = []): array
 {
     return array_replace_recursive([
-        'home' => ['status' => 200, 'x_robots' => '', 'body' => ''],
+        'home' => ['status' => 200, 'x_robots' => '', 'body' => '', 'security' => ['x-content-type-options' => 'nosniff', 'referrer-policy' => 'strict-origin-when-cross-origin', 'x-frame-options' => 'SAMEORIGIN', 'permissions-policy' => 'camera=()']],
         'robots_txt' => ['status' => 200, 'x_robots' => '', 'body' => "User-agent: *\nDisallow: /wp/wp-admin/\nSitemap: https://example.test/sitemap_index.xml\n"],
         'static' => ['status' => 200, 'x_robots' => '', 'body' => ''],
         'faceted' => ['status' => 200, 'x_robots' => 'noindex, follow', 'meta_noindex' => true],
@@ -640,4 +640,70 @@ it('skips a probe that the site did not answer with 200 instead of failing it', 
     expect($s['Production homepage is indexable'])->toBe('SKIP')
         ->and($s['Sitemap lists no noindex URL'])->toBe('SKIP')
         ->and(array_keys($s, 'FAIL'))->toBe([]);
+});
+
+it('checks the security headers the shared .htaccess sets, and not HSTS', function () {
+    $facts = pkdeGoodFacts();
+    $facts['wp_env'] = 'production';
+    $facts['seo_probe'] = pkdeSeoProbe();
+    $s = pkdeStatuses($facts);
+
+    expect($s['Security header x-content-type-options: nosniff'])->toBe('PASS')
+        ->and($s['Security header referrer-policy: strict-origin-when-cross-origin'])->toBe('PASS')
+        ->and($s['Security header x-frame-options: SAMEORIGIN'])->toBe('PASS')
+        ->and($s['Security header permissions-policy is set'])->toBe('PASS')
+        ->and(array_filter(array_keys($s), fn($c) => stripos($c, 'strict-transport') !== false))->toBe([]);
+
+    $facts['seo_probe'] = pkdeSeoProbe(['home' => ['security' => ['x-frame-options' => '', 'permissions-policy' => '']]]);
+    $s = pkdeStatuses($facts);
+
+    expect($s['Security header x-frame-options: SAMEORIGIN'])->toBe('FAIL')
+        ->and($s['Security header permissions-policy is set'])->toBe('FAIL');
+});
+
+it('holds a site to the Rank Math baseline and tells it what differs', function () {
+    $good = ['knowledgegraph_type' => 'company', 'knowledgegraph_name' => 'Acme', 'knowledgegraph_logo' => 'https://example.test/logo.png', 'open_graph_image' => 'https://example.test/logo.png',
+        'pt_page_default_rich_snippet' => 'off', 'pt_post_default_rich_snippet' => 'article', 'pt_post_default_article_type' => 'BlogPosting', 'pt_product_default_rich_snippet' => 'product',
+        'pt_post_title' => '%title% %sep% %sitename%', 'tax_category_title' => '%term% %page% %sep% %sitename%', 'tax_category_description' => '%term_description%'];
+    $facts = pkdeGoodFacts();
+    $facts['rankmath_seo'] = ['titles' => $good, 'post_types' => ['page', 'post', 'product'], 'locale' => 'en_GB', 'want_locale' => 'en_GB'];
+    $s = pkdeStatuses($facts);
+
+    expect($s['Rank Math: the organization is a company, not a person'])->toBe('PASS')
+        ->and($s['Rank Math: the organization name and logo are set'])->toBe('PASS')
+        ->and($s['Rank Math: pages are a WebPage, posts a BlogPosting, products a Product'])->toBe('PASS')
+        ->and($s['Rank Math: title templates have no "Archives" and the site name once'])->toBe('PASS')
+        ->and($s['Rank Math: archive descriptions come from the term description'])->toBe('PASS')
+        ->and($s['Rank Math: a default share image (og:image) is set'])->toBe('PASS')
+        ->and($s['Site language is en_GB'])->toBe('PASS');
+
+    $bad = array_replace($good, ['knowledgegraph_type' => 'person', 'knowledgegraph_logo' => '', 'open_graph_image' => '', 'pt_page_default_rich_snippet' => 'article',
+        'tax_category_title' => '%term% Archives %sep% %sitename% %sep% %sitename%', 'tax_category_description' => '']);
+    $facts['rankmath_seo'] = ['titles' => $bad, 'post_types' => ['page', 'post', 'product'], 'locale' => 'en_US', 'want_locale' => 'en_GB'];
+    $s = pkdeStatuses($facts);
+
+    expect($s['Rank Math: the organization is a company, not a person'])->toBe('FAIL')
+        ->and($s['Rank Math: the organization name and logo are set'])->toBe('FAIL')
+        ->and($s['Rank Math: pages are a WebPage, posts a BlogPosting, products a Product'])->toBe('FAIL')
+        ->and($s['Rank Math: title templates have no "Archives" and the site name once'])->toBe('FAIL')
+        ->and($s['Rank Math: archive descriptions come from the term description'])->toBe('FAIL')
+        ->and($s['Rank Math: a default share image (og:image) is set'])->toBe('FAIL')
+        ->and($s['Site language is en_GB'])->toBe('FAIL');
+});
+
+it('cleans a Rank Math title template and plans only what differs', function () {
+    expect(pkde_rankmath_clean_title('%term% Archives %page% %sep% %sitename%'))->toBe('%term% %page% %sep% %sitename%')
+        ->and(pkde_rankmath_clean_title('%title% %sep% %sitename% %sep% %sitename%'))->toBe('%title% %sep% %sitename%')
+        ->and(pkde_rankmath_clean_title('%sitename% %page% %sep% %sitedesc%'))->toBe('%sitename% %page% %sep% %sitedesc%')
+        ->and(pkde_rankmath_clean_title('%name% Archives'))->toBe('%name%');
+
+    $titles = ['knowledgegraph_type' => 'person', 'pt_page_title' => '%title% %sep% %sitename%', 'tax_category_title' => '%term% Archives %sep% %sitename%', 'tax_category_description' => '%term_description%'];
+    $plan = pkde_rankmath_baseline($titles, ['page', 'post'], ['name' => 'Acme', 'logo_url' => 'https://example.test/l.png', 'logo_id' => 7]);
+
+    expect($plan)->toMatchArray(['knowledgegraph_type' => 'company', 'knowledgegraph_name' => 'Acme', 'knowledgegraph_logo' => 'https://example.test/l.png', 'knowledgegraph_logo_id' => 7, 'open_graph_image' => 'https://example.test/l.png',
+        'tax_category_title' => '%term% %sep% %sitename%', 'pt_page_default_rich_snippet' => 'off'])
+        ->and($plan)->not->toHaveKey('pt_page_title')
+        ->and($plan)->not->toHaveKey('tax_category_description')
+        ->and($plan)->not->toHaveKey('pt_product_default_rich_snippet')
+        ->and(pkde_rankmath_baseline(['knowledgegraph_logo' => 'https://own/logo.png', 'open_graph_image' => 'https://own/og.png'], [], ['name' => '', 'logo_url' => 'https://example.test/l.png', 'logo_id' => 7]))->not->toHaveKey('open_graph_image')->not->toHaveKey('knowledgegraph_logo');
 });

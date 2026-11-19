@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026.11.19
+
+Security headers, the Rank Math baseline and more drift rows (WP-91 phase 2, TPL-180, TPL-182). **Adopt:** bump `pkde/deploy` and the workflow tags; HSTS is NOT included (owner decision pending).
+
+- **Security Headers block** in the shared `.htaccess`, added once and re-added when W3TC drops it (`activate-release.sh`): `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `X-Frame-Options: SAMEORIGIN`, `Permissions-Policy: camera=(), microphone=(), usb=(), interest-cohort=()`, all `always set` inside `<IfModule mod_headers.c>`. Nothing in the template needs to be framed by another origin; the editor, the Customizer, WooCommerce payment iframes, Turnstile and GTM are not affected (they are our page framing their site, or same-origin). A site that must be framed deletes the `X-Frame-Options` line; an edited block stays. Tested in a Linux container (scenario 17, 152 checks in all). NOT proved on a real server: that `mod_headers` is on at 20i; four drift rows request the home page and say.
+- **Rank Math baseline:** `bin/deploy/rankmath-standard.php` (pure rules, shared) and `bin/deploy/rankmath-baseline.php` (writes them; `bin/setup` runs it): company not person, the site's name, its logo and a default share image once a logo exists, pages as WebPage (no extra Article), posts as BlogPosting, products as Product, title templates without "Archives" and with the site name once, archive descriptions from the term description, and the site language `en_GB` (or `SITE_LOCALE` in the `.env`; the language pack is downloaded first, because WordPress stores an uninstalled WPLANG as empty). It writes only the keys that differ and prints their names; run twice it changes nothing. Seven drift rows, one per rule; SKIP on local.
+- Both files ship in the artifact (`assemble-artifact.sh`, `check-artifact.sh`). Tests: deploy Pest 104, `activate-release.test.sh` 152 checks in a Linux container. The baseline ran on the template stack: before, six rows differed; after, the five rules PASS, the logo and share-image rows wait for a logo, and the site is `en_GB` (`<html lang="en-GB">`, `og:locale en_GB`).
+
 ## 2026.11.18
 
 Search engine safety (WP-91, TPL-176, 177, 178). **Adopt:** bump `pkde/deploy` and the workflow tags; each site then runs two things once (below).

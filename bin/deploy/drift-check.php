@@ -20,6 +20,7 @@
 
 require_once __DIR__ . '/w3tc-standard.php';
 require_once __DIR__ . '/alert-email.php';
+require_once __DIR__ . '/rankmath-standard.php';
 
 const PKDE_DRIFT_SUBJECT = 'New website enquiry - [_site_title] - [your-name]';
 
@@ -293,6 +294,13 @@ function pkde_drift_evaluate(array $f): array
         }
     }
 
+    // The Rank Math baseline (WP-91): an existing site sees what differs from where a new site starts (bin/deploy/rankmath-baseline.php sets it).
+    if (is_array($f['rankmath_seo'] ?? null)) {
+        foreach (pkde_rankmath_findings((array) $f['rankmath_seo']['titles'], (array) $f['rankmath_seo']['post_types'], (string) $f['rankmath_seo']['locale'], (string) ($f['rankmath_seo']['want_locale'] ?? PKDE_RANKMATH_LOCALE)) as [$check, $ok, $detail]) {
+            $cmp($check, $ok, $detail . ' (read it, then run bin/deploy/rankmath-baseline.php, or change the value on purpose and say why)', true);
+        }
+    }
+
     // Search engine signals as the site really answers them (WP-91): requests the check makes to the site's own address. A probe that did not get a 200
     // (a staging gate, a firewall, no loopback DNS) is a SKIP naming what it got, never a FAIL.
     if (is_array($f['seo_probe'] ?? null)) {
@@ -330,6 +338,16 @@ function pkde_drift_evaluate(array $f): array
                 $body = (string) $sp['robots_txt']['body'];
                 $cmp('Staging: robots.txt disallows everything and names no sitemap', preg_match('/^\s*Disallow:\s*\/\s*$/mi', $body) === 1 && stripos($body, 'sitemap:') === false, 'robots.txt is not "Disallow: /" alone');
             }
+        }
+
+        // The security headers the shared .htaccess sets (pkde-deploy 2026.11.18.1, block Security Headers). HSTS is not part of it (owner decision).
+        if ($reached('Security headers', $sp['home'] ?? null)) {
+            $sec = (array) ($sp['home']['security'] ?? []);
+            $want = ['x-content-type-options' => 'nosniff', 'referrer-policy' => 'strict-origin-when-cross-origin', 'x-frame-options' => 'SAMEORIGIN'];
+            foreach ($want as $name => $value) {
+                $cmp('Security header ' . $name . ': ' . $value, strcasecmp(trim((string) ($sec[$name] ?? '')), $value) === 0, 'the homepage answers "' . ($sec[$name] ?? '') . '": the next release adds the Security Headers block to the shared .htaccess, or mod_headers is off', true);
+            }
+            $cmp('Security header permissions-policy is set', trim((string) ($sec['permissions-policy'] ?? '')) !== '', 'the homepage sends no Permissions-Policy', true);
         }
 
         // A filtered or sorted shop URL is noindex in the header AND in the meta tag (kit: app/woocommerce/filter-query.php).
@@ -545,8 +563,13 @@ function pkde_drift_http(string $url): array
         return ['status' => 0, 'x_robots' => '', 'body' => ''];
     }
     $header = wp_remote_retrieve_header($r, 'x-robots-tag');
+    $security = [];
+    foreach (['x-content-type-options', 'referrer-policy', 'x-frame-options', 'permissions-policy'] as $name) {
+        $value = wp_remote_retrieve_header($r, $name);
+        $security[$name] = is_array($value) ? implode(', ', $value) : (string) $value;
+    }
 
-    return ['status' => (int) wp_remote_retrieve_response_code($r), 'x_robots' => is_array($header) ? implode(', ', $header) : (string) $header, 'body' => (string) wp_remote_retrieve_body($r)];
+    return ['status' => (int) wp_remote_retrieve_response_code($r), 'x_robots' => is_array($header) ? implode(', ', $header) : (string) $header, 'security' => $security, 'body' => (string) wp_remote_retrieve_body($r)];
 }
 
 /**
@@ -683,6 +706,7 @@ function pkde_drift_collect(): array
         'relevanssi_indexed' => in_array('relevanssi', $active, true) ? pkde_drift_relevanssi_indexed() : null,
         'author_archive' => pkde_drift_author_archive(),
         'seo_probe' => pkde_drift_seo_probe(),
+        'rankmath_seo' => class_exists('\\RankMath\\Helper') ? ['titles' => (array) get_option('rank-math-options-titles', []), 'post_types' => array_values(array_filter(['page', 'post', 'product'], 'post_type_exists')), 'locale' => get_locale(), 'want_locale' => pkde_rankmath_wanted_locale()] : null,
         'rest_users' => pkde_drift_rest_users_probe(),
         'waf_prepend' => pkde_drift_waf_prepend_facts(),
         'woocommerce_active' => in_array('woocommerce', $active, true),

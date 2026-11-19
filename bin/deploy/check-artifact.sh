@@ -82,6 +82,8 @@ required=(
     bin/deploy/perf-probe.php
     bin/deploy/perf-probe.sh
     bin/deploy/seo-sitemap-exclusions.php
+    bin/deploy/rankmath-standard.php
+    bin/deploy/rankmath-baseline.php
     bin/deploy/wp.sh
     web/app/themes/sage/public/build/manifest.json
     web/app/themes/sage/vendor/autoload.php

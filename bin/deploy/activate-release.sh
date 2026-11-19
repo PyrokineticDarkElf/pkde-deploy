@@ -541,6 +541,32 @@ EOF
     echo "Added the XML-RPC Hardening block to $HTACCESS"
 fi
 
+# Security headers (WP-91, TPL-180): the four every response should carry, set once for the whole site in the shared .htaccess and re-added when W3TC
+# drops them. `always` also covers error pages and redirects. Chosen so nothing the template uses breaks:
+#  - X-Content-Type-Options nosniff: a file is only what its Content-Type says.
+#  - Referrer-Policy strict-origin-when-cross-origin: same-origin links keep the full referrer, other sites get the origin only (analytics and
+#    Cloudflare Turnstile keep working; nothing sends a full URL to a third party).
+#  - X-Frame-Options SAMEORIGIN: only this site may frame it. The block editor's canvas, the Customizer preview and wp-admin's interim login are
+#    same-origin; WooCommerce payment, Turnstile and GTM iframes are OUR page framing THEIR site, which this header does not affect.
+#  - Permissions-Policy: the camera, the microphone and USB are off (no page of the template uses them) and the FLoC cohort id is not sent. Geolocation
+#    and payment are left alone on purpose: a store locator or a payment request button may need them.
+# HSTS is NOT here: it waits for the owner (Cloudflare or this server). A site that must be framed by another origin deletes the X-Frame-Options line in its shared .htaccess:
+# the block is only added when its marker is missing, so an edited block stays as it is. Each header is inside <IfModule mod_headers.c>: no module = no header.
+if ! grep -q '# BEGIN Security Headers' "$HTACCESS"; then
+    cat >>"$HTACCESS" <<'EOF'
+
+# BEGIN Security Headers
+<IfModule mod_headers.c>
+Header always set X-Content-Type-Options "nosniff"
+Header always set Referrer-Policy "strict-origin-when-cross-origin"
+Header always set X-Frame-Options "SAMEORIGIN"
+Header always set Permissions-Policy "camera=(), microphone=(), usb=(), interest-cohort=()"
+</IfModule>
+# END Security Headers
+EOF
+    echo "Added the Security Headers block to $HTACCESS"
+fi
+
 # Staging Noindex (WP-91, TPL-176): on a server whose .env says WP_ENV is not production, every response, static files included, carries
 # X-Robots-Tag: noindex, nofollow. The platform module staging-safety-net sends the same header for what WordPress answers; images, PDFs and
 # the rest never reach PHP, so only the web server can cover them. The block is ADDED where WP_ENV is staging or any other non-production

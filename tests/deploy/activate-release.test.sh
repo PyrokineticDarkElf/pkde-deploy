@@ -515,4 +515,23 @@ bash $S $BASE SN6 5 >$T/s16f.log 2>&1
 check "a staging .htaccess copied to production loses the block, and every other block stays" "! grep -q 'Staging Noindex' $BASE/shared/.htaccess && ! grep -q 'X-Robots-Tag' $BASE/shared/.htaccess && grep -q 'BEGIN WordPress' $BASE/shared/.htaccess && grep -q 'END XML-RPC Hardening' $BASE/shared/.htaccess && grep -q 'BEGIN Upload Cache' $BASE/shared/.htaccess"
 BASE=$OLD_BASE
 
+# 17. Security Headers (WP-91, TPL-180): added once in every environment, re-added when W3TC drops it, an edited block stays, HSTS is never part of it.
+OLD_BASE=$BASE
+mkrelease SH1; printf 'WP_ENV=production\n' > $BASE/shared/.env
+bash $S $BASE SH1 5 >$T/s17a.log 2>&1
+check "Security Headers block present exactly once with the four headers" "[ \$(grep -c 'BEGIN Security Headers' $BASE/shared/.htaccess) -eq 1 ] && grep -qF 'Header always set X-Content-Type-Options \"nosniff\"' $BASE/shared/.htaccess && grep -qF 'Header always set Referrer-Policy \"strict-origin-when-cross-origin\"' $BASE/shared/.htaccess && grep -qF 'Header always set X-Frame-Options \"SAMEORIGIN\"' $BASE/shared/.htaccess && grep -qF 'Header always set Permissions-Policy' $BASE/shared/.htaccess"
+check "no HSTS header anywhere in the .htaccess" "! grep -qi 'Strict-Transport-Security' $BASE/shared/.htaccess"
+mkrelease SH2
+bash $S $BASE SH2 5 >$T/s17b.log 2>&1
+check "next release: still exactly once, not announced again" "[ \$(grep -c 'BEGIN Security Headers' $BASE/shared/.htaccess) -eq 1 ] && ! grep -q 'Added the Security Headers' $T/s17b.log"
+sed -i.bak '/Header always set X-Frame-Options/d' $BASE/shared/.htaccess && rm -f $BASE/shared/.htaccess.bak   # a site that must be framed deletes the line
+mkrelease SH3
+bash $S $BASE SH3 5 >$T/s17c.log 2>&1
+check "a site that deleted the X-Frame-Options line keeps it deleted" "! grep -q 'X-Frame-Options' $BASE/shared/.htaccess && [ \$(grep -c 'BEGIN Security Headers' $BASE/shared/.htaccess) -eq 1 ]"
+awk '/# BEGIN Security Headers/{skip=1} !skip{print} /# END Security Headers/{skip=0}' $BASE/shared/.htaccess > $T/ht.nosh && cat $T/ht.nosh > $BASE/shared/.htaccess   # W3TC regenerated the file
+mkrelease SH4
+bash $S $BASE SH4 5 >$T/s17d.log 2>&1
+check "a dropped Security Headers block is added again" "[ \$(grep -c 'BEGIN Security Headers' $BASE/shared/.htaccess) -eq 1 ] && grep -q 'X-Frame-Options' $BASE/shared/.htaccess"
+BASE=$OLD_BASE
+
 echo; echo "RESULT: $pass passed, $fail failed"; exit $fail
