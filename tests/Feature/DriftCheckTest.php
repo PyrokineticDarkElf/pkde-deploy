@@ -152,6 +152,11 @@ it('skips Wordfence on staging while it is inactive, and still holds an active o
     $facts['env'] = 'staging';
     $facts['wordfence']['alertOn_update'] = '1';
     expect(pkdeStatuses($facts)['Wordfence alertOn_update'])->toBe('FAIL');
+
+    // an active Wordfence on staging is held to the username-discovery rule too (WP-88)
+    $facts['wordfence']['alertOn_update'] = '0';
+    $facts['wordfence']['loginSec_disableAuthorScan'] = '0';
+    expect(pkdeStatuses($facts)['Wordfence loginSec_disableAuthorScan'])->toBe('FAIL');
 });
 
 it('requires Rank Math to be registered: skipped or connected', function () {

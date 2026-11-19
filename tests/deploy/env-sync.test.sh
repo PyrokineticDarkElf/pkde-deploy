@@ -119,6 +119,7 @@ check "prod refusal left the file alone" "$(cat "$SRV")" "$before"
 out="$("$PULL" "${ARGS[@]}" --apply 2>&1)"; rc=$?
 check "apply exit" "$rc" "0"
 has "apply says written" "$out" "Written. The previous file is"
+has "apply adding WP_ADMIN_EMAIL says alertEmails follows at the next release" "$out" "alertEmails follows these two variables at the next release"
 has "changed value written" "$(cat "$SRV")" "DB_PASSWORD=$DBPW"
 has "added variable appended" "$(cat "$SRV")" "SMTP_PASSWORD=$SMTP"
 has "an empty WORDFENCE_ALERT_EMAIL is written as an empty line, not refused" "$(cat "$SRV")" "WORDFENCE_ALERT_EMAIL="
@@ -186,6 +187,31 @@ check "seed always creates both address fields (empty, concealed, WP Admin) and 
 
 # 11. a missing ssh name is a usage error
 rm -f "$T/item.json"; (unset STAGING_SSH_HOST; "$SEED" "${ARGS[@]}" >/dev/null 2>&1; check "missing STAGING_SSH_HOST" "$?" "2")
+
+# 12. the probe after a write retries once (a cold first render, WP-87 on jsd staging) and calls a persistent failure a failure
+cat > "$T/probe.py" <<'PYEOF'
+import importlib.util, sys, threading, http.server
+spec = importlib.util.spec_from_file_location('envsync', sys.argv[1]); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+mode = sys.argv[2]; hits = []
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        hits.append(1)
+        code = 200 if (mode == 'flaky' and len(hits) > 1) else 503
+        self.send_response(code); self.end_headers()
+    def log_message(self, *a): pass
+srv = http.server.HTTPServer(('127.0.0.1', 0), H); threading.Thread(target=srv.serve_forever, daemon=True).start()
+try:
+    m.probe('http://127.0.0.1:%d/' % srv.server_port, 'ROLLBACK-CMD', pause=0)
+finally:
+    print('hits=%d' % len(hits))
+PYEOF
+flaky="$(python3 "$T/probe.py" "$REPO_ROOT/bin/deploy/env-sync.py" flaky 2>&1)"
+has "a 503 then a 200 is a pass after one retry" "$flaky" "answered 200"
+has "...with exactly two requests" "$flaky" "hits=2"
+lacks "...and no PROBE FAILED" "$flaky" "PROBE FAILED"
+down="$(python3 "$T/probe.py" "$REPO_ROOT/bin/deploy/env-sync.py" down 2>&1)"
+has "a persistent 503 is PROBE FAILED with the rollback command" "$down" "PROBE FAILED"
+has "...after two requests" "$down" "hits=2"
 
 echo "env-sync: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

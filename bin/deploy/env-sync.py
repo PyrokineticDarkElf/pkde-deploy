@@ -14,7 +14,7 @@ Rules (all of them are about not breaking a live site or leaking a value):
     is reported with the one-line rollback. Production needs --production-go on top (the owner's go is a human step, this is only the speed bump).
 """
 import argparse
-import datetime
+import datetime, time
 import json
 import os
 import re
@@ -214,22 +214,30 @@ def pull(args):
         die(f'the write failed (exit {rc}); the old .env is untouched or restorable from {bak}: {err.decode("utf-8", "replace").strip()[:200]}')
     print(f'Written. The previous file is {path}/shared/{bak}.')
     probe(values.get('WP_HOME', ''), f"cp -p '{path}/shared/{bak}' '{path}/shared/.env'")
+    if {'WP_ADMIN_EMAIL', 'WORDFENCE_ALERT_EMAIL'} & set(d['added'] + d['changed'] + d['removed']):
+        print('NOTE: Wordfence alertEmails follows these two variables at the next release (activate-release.sh), not now. Until then alerts still go to the old address.')
 
 
-def probe(home, rollback):
+def probe(home, rollback, pause=3):
     url = home.strip().strip('"\'')
     if not url.startswith('http') or '${' in url or 'localhost' in url:
         print('No probe (WP_HOME is not a public URL).')
         return
-    try:
-        code = urllib.request.urlopen(urllib.request.Request(url, headers={'User-Agent': 'pkde-env-pull'}), timeout=25).status
-    except urllib.error.HTTPError as e:
-        code = e.code
-    except Exception:
-        code = 0
-    if code and code < 500:
-        print(f'Probe: {url} answered {code}.')
-        return
+    # Two tries of 15 s with a pause: the first request after a .env change can be a cold, uncached render (jsd staging: 4.5 s, and one
+    # "answered nothing" while the site answered 200 right afterwards).
+    code = 0
+    for attempt in (1, 2):
+        try:
+            code = urllib.request.urlopen(urllib.request.Request(url, headers={'User-Agent': 'pkde-env-pull'}), timeout=15).status
+        except urllib.error.HTTPError as e:
+            code = e.code
+        except Exception:
+            code = 0
+        if code and code < 500:
+            print(f'Probe: {url} answered {code}.')
+            return
+        if attempt == 1:
+            time.sleep(pause)
     print(f'PROBE FAILED: {url} answered {code or "nothing"}. Roll back on the server with: {rollback}')
     sys.exit(1)
 

@@ -547,8 +547,7 @@ fi
 # WordPress's own rules (they send every request that is not a file to index.php with [L]), so it is inserted above "# BEGIN WordPress".
 #  - Matched: a query argument named filter_<name>=, query_type_<name>= or rating_filter= (case-insensitive, at the start or after &).
 #  - NOT matched, by construction: sage_filter_* (the "filter_" is not at the start of the name), and the array-valued filter_product_cat[]= /
-#    filter_product_tag[]= of the earlier custom controls (the name is followed by "[" or "%5B", not "="), which the kit still migrates.
-#    The kit drops that migration in a later release; the rule then needs no exemption.
+#    filter_product_tag[]= of the earlier custom controls (the name is followed by "[" or "%5B", not "="); the kit stopped migrating those URLs in 2026.11.19.1, so they now do nothing.
 #  - A site that really uses WooCommerce's layered-nav widgets or its Product Filter blocks deletes this block from its shared .htaccess and keeps
 #    it out (the block is only added when its marker is missing; delete the lines, leave a "# BEGIN Query Flood Guard" comment to keep it from coming back).
 # Wrapped in <IfModule>: no mod_rewrite = no protection, never a 500. Re-added when W3TC or Wordfence rewrite the file and drop it.

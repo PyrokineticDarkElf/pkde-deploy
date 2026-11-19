@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026.11.19.2
+
+Small corrections (TPL-185). **Adopt:** bump `pkde/deploy` and the workflow tags.
+
+- **`env-sync.py` (env-pull/push):** the health probe after an apply tries twice (15 s each, a pause between) before it rolls back, so one slow answer from a 20i host no longer undoes a good apply. After an apply that changes `WP_ADMIN_EMAIL` or `WORDFENCE_ALERT_EMAIL` it prints that Wordfence `alertEmails` follows at the next release, not now. Tested: a flaky 503 then 200 passes after exactly 2 tries, a persistent 503 gives PROBE FAILED after 2 (`env-sync.test.sh`, 73 checks).
+- **Drift: the author-role rows count blog authors only** (`post` type): an administrator who only published products or pages no longer counts as a blog author without the `author` role (tcs). The REST users probe still uses any REST post type, as WordPress's own users route does.
+- **Drift wording:** "Wordfence inactive on staging by design" was wrong (rp, tcs, mds, jsd and cs run it active on staging). The rows say "not active on this staging site"; the SKIP applies only while Wordfence is inactive, an active one is held to the whole standard (new Pest case for `loginSec_disableAuthorScan` on an active staging).
+
 ## 2026.11.19.1
 
 Layered-navigation bot flood guard (TPL-184, tcs TCS-123, owner go 2026-11-16). **Adopt:** bump `pkde/deploy` and the workflow tags; a shop adds its icons (below).

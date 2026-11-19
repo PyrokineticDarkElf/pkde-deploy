@@ -167,14 +167,14 @@ function pkde_drift_evaluate(array $f): array
         }
     }
 
-    // Wordfence is inactive on staging by design (by design): there it is a SKIP, not a FAIL, and only while it really is inactive.
-    // An ACTIVE Wordfence on staging is still held to the standard.
+    // Some staging sites run Wordfence and some do not (rp, tcs, mds, jsd and cs have it active; WP-85/WP-88 facts, 2026-11-13). Inactive on staging is a SKIP, not a FAIL,
+    // and only while it really is inactive. An ACTIVE Wordfence on staging is held to the whole standard, loginSec_disableAuthorScan included.
     $wfOffOnStaging = ($f['env'] ?? '') === 'staging' && ! in_array('wordfence', (array) ($f['active_plugins'] ?? []), true);
 
     // Wordfence
     $wf = $f['wordfence'] ?? null;
     if ($wfOffOnStaging) {
-        $add('SKIP', 'Wordfence', 'inactive on staging by design');
+        $add('SKIP', 'Wordfence', 'not active on this staging site (some stagings run it, this one does not)');
     } elseif (! is_array($wf)) {
         $add('FAIL', 'Wordfence', 'wfConfig is not available (plugin inactive?)');
     } else {
@@ -454,7 +454,7 @@ function pkde_drift_evaluate(array $f): array
     // The opt-ins (Turnstile with CF7, Post SMTP with SMTP_HOST, the hidden login) are not active on a development stack.
     foreach ($expected as $slugName) {
         if ($slugName === 'wordfence' && $wfOffOnStaging) {
-            $add('SKIP', 'Plugin wordfence active', 'inactive on staging by design');
+            $add('SKIP', 'Plugin wordfence active', 'not active on this staging site (some stagings run it, this one does not)');
 
             continue;
         }
@@ -545,12 +545,12 @@ function pkde_drift_rest_users_probe(): array
     return $out;
 }
 
-/** Author archive facts: is the module loaded, how many users have published posts, how many of them hold no allowed role, how many users with an allowed role have a nicename (the archive slug) equal to their login. Counts only, no names. */
+/** Author archive facts: is the module loaded, how many users have published BLOG posts (post type post only: a shop manager who only owns pages or products has no author archive), how many of them hold no allowed role, how many users with an allowed role have a nicename (the archive slug) equal to their login. Counts only, no names. */
 function pkde_drift_author_archive(): array
 {
     $module = function_exists('App\\MuPlugins\\author_has_allowed_role') && function_exists('App\\MuPlugins\\author_archive_allowed_roles');
     $roles = $module ? \App\MuPlugins\author_archive_allowed_roles() : ['author'];
-    $users = get_users(['has_published_posts' => true, 'fields' => ['ID']]);
+    $users = get_users(['has_published_posts' => ['post'], 'fields' => ['ID']]);
     $without = 0;
 
     foreach ($users as $u) {
