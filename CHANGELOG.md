@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026.11.20.4
+
+`apply-pages.php` (from bb), a top-level `content/` folder in the deploy artifact, the FAQ migration scripts finally shipped, and a drift row for the motion switch (TPL-248, TPL-240). **Adopt:** bump `pkde/deploy` on tcs and bb now (staging pilots); every other site in the February train. tcs: put its page files in `content/pages/` (the folder `apply-pages` and the artifact read first); bb: move its files from `config/content/pages/` to `content/pages/` at its next push (the old folder still works as a fallback). Proved in real WordPress on the template stack; not on a server.
+
+- **`bin/deploy/apply-pages.php`** (`plan` by default, `apply`): applies `content/pages/<slug>.html` to the page with that slug, never creating a page. Resolves `{{form:<key>}}` to the site's form (CF7), maps `/uploads/` pictures to media-library attachments by file name (`imageUrl` to `imageId`, `extraImages[].url` to `.id`), keeps a revision of the page before updating, skips pages that already match (idempotent) and prints slugs and counts only. Real WordPress: plan found 2 to update, 1 page missing, 1 unknown form key and a missing picture; apply updated 2 with revisions; a second plan found 2 matching; no page files found changed nothing.
+- **The artifact carries `content/`** (`assemble-artifact.sh` copies it when it exists; the shell test ships a page file through it). **`faq-migrate.php` and `faq-migrate-lib.php` were never copied into the artifact** (a fixed list of scripts); they are now, together with the two `apply-pages` files, and `check-artifact.sh` requires all four.
+- **Drift check:** an INFO row says what `pkde_kit/motion` is set to (kit 2026.11.20.5).
+- Pest 143, shell test 11.
+
 ## 2026.11.20.3
 
 `faq-migrate.php` finds FAQs kept as core Details blocks and in synced patterns (WP-102, TPL-243, TPL-245; found by tcs and el). **Adopt:** bump `pkde/deploy` on tcs and el (and any site whose FAQs are Details blocks); nothing else changes for the other sites. Run `plan` again: it now lists what it missed before.
