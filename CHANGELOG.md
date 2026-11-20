@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026.11.20.2
+
+`bin/deploy/faq-migrate.php` and FAQ drift rows (WP-102, TPL-234; needs pkde/platform 2026.11.20.1). **Adopt:** bump `pkde/deploy`: bb now (staging pilot); tcs, js, el now; rp, bp, mds, jsd, cs after their December production release. Not Train-ready.
+
+- **`faq-migrate.php plan out=PATH` (read-only):** lists every page with a kit FAQ block typed by hand, a Rank Math FAQ block or an accordion headed "FAQ" with its question count, names theme files that look like a hand-coded FAQ, and writes the inventory CSV (page slug, block index, block heading, question, the first 120 characters of the answer, a stable question hash, the block kind; no personal data).
+- **`faq-migrate.php apply mapping=config/pkde-faq-groups.php`:** uses only the approved mapping file: creates or reuses its groups, creates one FAQ per unique question hash (identical questions are one FAQ), puts each FAQ in its groups in the file's order, switches each FAQ block the file names to group mode, keeps the old page content as a revision. It refuses to run without a mapping file or with one that has a problem (changing nothing), is idempotent, and prints counts and slugs only. The file's format is `config/pkde-faq-groups.php.example` in the template; the runbook is `bin/docs/faq-migration.md`.
+- **Drift rows:** FAQs have no public URL, archive or sitemap entry; Administrators and the SEO role manage them and Editors do not; INFO for FAQ blocks still typed by hand; WARN (new status) for groups with no published FAQ.
+- Pest 132.
+
 ## 2026.11.20.1
 
 Drift rows for the block editor (WP-100, TPL-209, TPL-219, TPL-220, TPL-221). **Adopt:** bump `pkde/deploy`: bb now (staging pilot); every other site the February train.
