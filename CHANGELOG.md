@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026.11.20.7
+
+`apply-pages.php` applies legal documents (TPL-261). **Adopt:** bb (3 legal page files) and tcs with the legal pilots; every other site when it converts its legal Pages.
+
+- **`content/legal/<slug>.html` is applied to the `pkde_legal` post with that slug:** the same plan and apply, a revision kept, a second run changes nothing, nothing is created (a missing document is reported: `legal-migrate apply` converts the Page first, then `apply-pages`). A file with any block outside the legal list (headings, paragraph, list, list-item, table, quote, details, separator) is refused and the blocks are named (`PROBLEM: block(s) not allowed in a legal document: core/cover, core/group`). `legal=` names another folder; the artifact already ships `content/` whole.
+- Real WordPress on the template stack with the platform `legal` module: plan listed an update, a missing document and a refused file; apply updated the document (a revision kept, the new text in it) and a plain page together; the second plan matched; the refused file stayed refused. Pest 157, shell test 12.
+
 ## 2026.11.20.6
 
 Two tcs staging findings (TPL-258, TPL-259). **Adopt:** bump `pkde/deploy` on tcs (staging) and bb; every other site in the February train.
