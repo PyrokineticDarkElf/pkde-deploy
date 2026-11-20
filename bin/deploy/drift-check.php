@@ -673,6 +673,11 @@ function pkde_drift_evaluate(array $f): array
         }
     }
 
+    // The motion switch (WP-103, pkde_kit/motion): INFO only, which mode the site runs. Only when the facts carry the key; null is a kit without the motion system.
+    if (array_key_exists('motion', $f)) {
+        $add('INFO', 'Motion (pkde_kit/motion)', $f['motion'] === null ? 'the kit has no motion switch yet (an older pkde/sage-kit)' : 'is ' . $f['motion'] . ($f['motion'] === 'on' ? ' (hover, press and reveal on scroll)' : ($f['motion'] === 'reduced' ? ' (hover and press, no reveal)' : ' (nothing moves)')));
+    }
+
     // FAQs (WP-102): the post type is not a public thing, the right people manage it, the old hand-typed blocks and empty groups are listed. Only when the facts carry the key.
     if (array_key_exists('faq', $f)) {
         $q = $f['faq'];
@@ -1074,6 +1079,7 @@ function pkde_drift_collect(): array
         'editor_catalog' => pkde_drift_editor_catalog_facts(),
         'global_blocks' => pkde_drift_global_blocks_facts(),
         'faq' => pkde_drift_faq_facts(),
+        'motion' => function_exists('App\\motion_mode') ? App\motion_mode() : null,
         'turnstile' => [
             'appearance' => get_option('cfturnstile_appearance', 'always'),
             'login' => get_option('cfturnstile_login'),
