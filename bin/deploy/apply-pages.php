@@ -11,6 +11,7 @@
  *
  * One file per page, content/pages/<slug>.html (block markup). For each file it:
  *   - finds the page by slug (any status); it never creates a page: a missing slug is reported;
+ *   - resolves {{faq-group:<slug>}} to the id of that FAQ group, for the kit FAQ block in group mode ("groups":[{{faq-group:general-questions}}]); the group must exist, none is created;
  *   - resolves {{form:<key>}} to the Contact Form 7 form tagged with that key (App\form_id; for `contact` also the form titled "Contact Us" when none is tagged);
  *   - maps every /uploads/... picture to an attachment of this site by FILE NAME and adds its id to the blocks that take one (imageUrl, extraImages); a picture with no
  *     attachment here is reported as missing, the page is still written;
@@ -112,6 +113,23 @@ foreach ($files as $file) {
         }
 
         $content = str_ireplace('{{form:' . $key . '}}', (string) $form, $content);
+    }
+
+    // {{faq-group:<slug>}} becomes the id of that FAQ group (the kit's FAQ block stores group ids), so a page file can carry the FAQ block in group mode and the order
+    // apply-pages then faq-migrate is not needed. A group that does not exist is a problem: nothing is created here.
+    if (! $failed) {
+        foreach (pkde_pages_faq_group_slugs($content) as $groupSlug) {
+            $term = taxonomy_exists('pkde_faq_group') ? get_term_by('slug', $groupSlug, 'pkde_faq_group') : false;
+
+            if (! $term) {
+                printf("%-24s PROBLEM: no FAQ group with the slug %s (create it first: the FAQs screen, or faq-migrate apply)\n", $slug, $groupSlug);
+                $counts['problem']++;
+                $failed = true;
+                break;
+            }
+
+            $content = str_ireplace('{{faq-group:' . $groupSlug . '}}', (string) $term->term_id, $content);
+        }
     }
 
     if ($failed) {

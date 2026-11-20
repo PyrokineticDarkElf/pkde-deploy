@@ -71,3 +71,11 @@ function pkde_pages_form_keys(string $content): array
 
     return array_values(array_unique($m[1]));
 }
+
+/** The FAQ group placeholders a page file holds: `{{faq-group:<slug>}}` (the id of the FAQ group with that slug, for the kit FAQ block's `groups`). @return list<string> the slugs */
+function pkde_pages_faq_group_slugs(string $content): array
+{
+    preg_match_all('/\{\{faq-group:([a-z0-9_-]+)\}\}/i', $content, $m);
+
+    return array_values(array_unique(array_map('strtolower', $m[1])));
+}

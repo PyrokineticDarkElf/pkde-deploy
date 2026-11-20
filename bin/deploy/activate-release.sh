@@ -273,6 +273,19 @@ ln -sfn "$RELEASE_DIR" "$CURRENT_LINK.tmp"
 mv -Tf "$CURRENT_LINK.tmp" "$CURRENT_LINK"
 echo "Activated release $RELEASE -> $CURRENT_LINK"
 
+# curl behind the staging gate (HTTP Basic auth, TPL-191): the credentials come from STAGING_GATE_AUTH in shared/.env and go to curl on stdin as a config line (backslash and
+# quote escaped), so they are on no command line and in no URL (a URL built with -u would print them in -w %{redirect_url} or %{url_effective}: never use those with credentials).
+# Every web request of a switch or a rollback goes through this, so a manual rollback resets the web PHP behind the gate too (tcs staging: "could not request the opcache reset 401").
+gate_curl() {
+    local gate
+    gate="$(sed -n 's/^STAGING_GATE_AUTH=//p' "$SHARED_DIR/.env" 2>/dev/null | tr -d "\"'\r" | tail -1)" || gate=""
+    if [ -n "$gate" ]; then
+        printf 'user = "%s"\n' "$(printf '%s' "$gate" | sed 's/\\/\\\\/g; s/"/\\"/g')" | curl --config - "$@"
+    else
+        curl "$@"
+    fi
+}
+
 # --- reset the WEB opcache: the symlink switch alone does not make PHP run the new code ---
 # 20i's PHP-FPM runs with opcache on and revalidate_path=0, so scripts cached under the UNRESOLVED path
 # (current/...) stay cached across the atomic switch above and the web keeps executing the previous release's
@@ -301,7 +314,7 @@ hit_all_workers() {
     out="$(mktemp -d)" || return 0
     local bg=""
     for i in $(seq 1 "$hits"); do
-        ( curl -fsSL --max-time 30 "$url/zz-opcache-$token.php?hold=1&n=$i" > "$out/$i" 2>/dev/null ) &
+        ( gate_curl -fsSL --max-time 30 "$url/zz-opcache-$token.php?hold=1&n=$i" > "$out/$i" 2>/dev/null ) &
         bg="$bg $!"
     done
     # wait for OUR requests only: a bare `wait` would also wait for any other background job of this run
@@ -338,7 +351,7 @@ reset_web_opcache() {
     # Any other failure (403, no connection, timeout) is not a lag and warns at once.
     local tries="${OPCACHE_RETRY_ATTEMPTS:-19}" pause="${OPCACHE_RETRY_INTERVAL:-5}" attempt=1 got=1
     while :; do
-        if answer="$(curl -fsSL --max-time 30 "$url/zz-opcache-$token.php" 2>&1)"; then got=0; break; fi
+        if answer="$(gate_curl -fsSL --max-time 30 "$url/zz-opcache-$token.php" 2>&1)"; then got=0; break; fi
         case "$answer" in *"error: 404"*) ;; *) break ;; esac
         [ "$attempt" -ge "$tries" ] && { answer="the web server still answered 404 for the probe after $attempt tries (about $(( (attempt - 1) * pause ))s): it has not resolved the new current yet. ${answer}"; break; }
         sleep "$pause"; attempt=$((attempt + 1))
@@ -442,7 +455,7 @@ verify_fresh_render() {
         fi
         if [ "$attempt" -ge "$tries" ]; then break; fi
         echo "WARN: fresh render check: the page links $served but this release's manifest names $expected; resetting the web opcache again (attempt $attempt of $tries)" >&2
-        curl -fsSL --max-time 30 "$url/zz-opcache-$token.php?again=$attempt" >/dev/null 2>&1 || true
+        gate_curl -fsSL --max-time 30 "$url/zz-opcache-$token.php?again=$attempt" >/dev/null 2>&1 || true
         hit_all_workers "$url" "$token"
         sleep "${PKDE_FRESH_RENDER_PAUSE:-5}"
         attempt=$((attempt + 1))
@@ -736,10 +749,10 @@ probe_hardening() {
 
     for path in "${probes[@]+"${probes[@]}"}"; do
         expected=403
-        code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$url$path" 2>/dev/null)" || code="000"
+        code="$(gate_curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$url$path" 2>/dev/null)" || code="000"
         if [ "$code" != "$expected" ]; then
             sleep 3
-            code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$url$path" 2>/dev/null)" || code="000"
+            code="$(gate_curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$url$path" 2>/dev/null)" || code="000"
         fi
         if [ "$code" != "$expected" ]; then
             echo "WARN: hardening probe: $path (a file that exists) answered $code, expected $expected. The .htaccess deny rule is NOT enforced." >&2

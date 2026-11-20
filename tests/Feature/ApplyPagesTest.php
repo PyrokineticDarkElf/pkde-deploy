@@ -48,3 +48,11 @@ it('says how it works: plan by default, by slug, a revision, never creating a pa
     expect($source)->toContain("'mode' => 'plan'", 'wp_save_post_revision', "'name' => \$slug", "'content/pages', 'config/content/pages'", 'page missing', 'matches', "kses_remove_filters")
         ->and($source)->not->toContain('wp_insert_post'); // it never creates a page
 });
+
+it('finds the FAQ group placeholders in a page file, once each (TPL-258)', function () {
+    expect(pkde_pages_faq_group_slugs('<!-- wp:sage/faq {"groups":[{{faq-group:general-questions}},{{faq-group:Delivery}}],"order":"manual"} /--> {{faq-group:general-questions}}'))->toBe(['general-questions', 'delivery'])
+        ->and(pkde_pages_faq_group_slugs('no placeholders'))->toBe([]);
+
+    $source = file_get_contents(dirname(__DIR__, 2) . '/bin/deploy/apply-pages.php');
+    expect($source)->toContain('{{faq-group:', 'pkde_faq_group', 'no FAQ group with the slug');
+});
