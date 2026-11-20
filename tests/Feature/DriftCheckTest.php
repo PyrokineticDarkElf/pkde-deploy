@@ -942,3 +942,38 @@ it('says which motion mode the site runs (WP-103), INFO only', function () {
     unset($facts['motion']);
     expect(pkdeStatuses($facts))->not->toHaveKey('Motion (pkde_kit/motion)');
 });
+
+it('checks the legal documents (WP-104): Privacy and Cookies everywhere, Terms and Returns on a shop, the settings, dates and address clashes', function () {
+    $facts = pkdeGoodFacts();
+    $facts['woocommerce_active'] = false;
+    $facts['legal'] = ['types' => ['privacy' => 1, 'cookies' => 1], 'no_date' => [], 'privacy_setting' => 'document', 'terms_setting' => 'unset', 'clashes' => []];
+    $statuses = pkdeStatuses($facts);
+
+    expect($statuses['Legal: a Privacy document is published'])->toBe('PASS')
+        ->and($statuses['Legal: a Cookies document is published'])->toBe('PASS')
+        ->and($statuses['Legal: the core privacy setting points at a published document'])->toBe('PASS')
+        ->and($statuses['Legal: every document has an effective date'])->toBe('PASS')
+        ->and($statuses['Legal: no document shares its address with a Page'])->toBe('PASS')
+        ->and($statuses)->not->toHaveKey('Legal: a Terms document is published')->not->toHaveKey('Legal: the WooCommerce terms setting points at a published document');
+
+    // a shop also needs Terms, Returns and the terms setting
+    $facts['woocommerce_active'] = true;
+    $statuses = pkdeStatuses($facts);
+    expect($statuses['Legal: a Terms document is published'])->toBe('FAIL')
+        ->and($statuses['Legal: a Returns document is published'])->toBe('FAIL')
+        ->and($statuses['Legal: the WooCommerce terms setting points at a published document'])->toBe('FAIL');
+
+    $facts['legal'] = ['types' => ['privacy' => 1, 'cookies' => 1, 'terms' => 1, 'returns' => 1], 'no_date' => ['privacy-policy'], 'privacy_setting' => 'other', 'terms_setting' => 'document', 'clashes' => ['cookies']];
+    $statuses = pkdeStatuses($facts);
+    expect($statuses['Legal: a Terms document is published'])->toBe('PASS')
+        ->and($statuses['Legal: the WooCommerce terms setting points at a published document'])->toBe('PASS')
+        ->and($statuses['Legal: the core privacy setting points at a published document'])->toBe('FAIL')
+        ->and($statuses['Legal: every document has an effective date'])->toBe('FAIL')
+        ->and($statuses['Legal: no document shares its address with a Page'])->toBe('FAIL');
+
+    $facts['legal'] = null;
+    expect(pkdeStatuses($facts)['Legal documents'])->toBe('INFO');
+
+    unset($facts['legal']);
+    expect(pkdeStatuses($facts))->not->toHaveKey('Legal documents');
+});

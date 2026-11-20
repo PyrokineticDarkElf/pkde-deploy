@@ -89,6 +89,8 @@ required=(
     bin/deploy/relevanssi-settings.php
     bin/deploy/faq-migrate.php
     bin/deploy/faq-migrate-lib.php
+    bin/deploy/legal-migrate.php
+    bin/deploy/legal-migrate-lib.php
     bin/deploy/apply-pages.php
     bin/deploy/apply-pages-lib.php
     bin/deploy/wp.sh
