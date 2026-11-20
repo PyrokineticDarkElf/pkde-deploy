@@ -98,3 +98,129 @@ it('ships the script with the two steps, the refusals and the revision kept', fu
 
     expect($source)->toContain('plan needs out=PATH', 'Refusing to run: apply uses only an approved mapping file', 'pkde_faq_mapping_problems', 'wp_save_post_revision', '_pkde_faq_hash', 'kses_remove_filters');
 });
+
+/** A core Details block as parse_blocks returns it: the summary lives in the HTML, the answer in the inner blocks. */
+function pkdeDetails(string $question, string $answer): array
+{
+    return ['blockName' => 'core/details', 'attrs' => [], 'innerBlocks' => [['blockName' => 'core/paragraph', 'attrs' => [], 'innerBlocks' => [], 'innerHTML' => "<p>$answer</p>", 'innerContent' => ["<p>$answer</p>"]]],
+        'innerHTML' => "\n<details class=\"wp-block-details\"><summary>$question</summary>\n\n</details>\n", 'innerContent' => ["\n<details class=\"wp-block-details\"><summary>$question</summary>\n", null, "\n</details>\n"]];
+}
+
+function pkdeHeading(string $text, int $level = 2): array
+{
+    return ['blockName' => 'core/heading', 'attrs' => ['level' => $level], 'innerBlocks' => [], 'innerHTML' => "<h$level class=\"wp-block-heading\">$text</h$level>", 'innerContent' => ["<h$level class=\"wp-block-heading\">$text</h$level>"]];
+}
+
+function pkdeFiller(): array
+{
+    return ['blockName' => null, 'attrs' => [], 'innerBlocks' => [], 'innerHTML' => "\n\n", 'innerContent' => ["\n\n"]];
+}
+
+it('recognises a heading that introduces FAQs', function () {
+    foreach (['F.A.Q.', 'FAQ', 'FAQs', 'Frequently asked questions', 'Questions', 'Delivery questions'] as $text) {
+        expect(pkde_faq_heading_matches($text))->toBeTrue($text);
+    }
+
+    expect(pkde_faq_heading_matches('Our story'))->toBeFalse()->and(pkde_faq_heading_matches('Contact us'))->toBeFalse();
+});
+
+it('finds core Details blocks under an F.A.Q. heading as one FAQ block (tcs: five on the contact page), the heading becoming the block heading', function () use ($render, $serialize) {
+    $blocks = [
+        ['blockName' => 'core/paragraph', 'attrs' => [], 'innerBlocks' => [], 'innerHTML' => '<p>Call us.</p>'],
+        pkdeFiller(),
+        pkdeHeading('F.A.Q.'),
+        pkdeFiller(),
+        pkdeDetails('How long is delivery?', 'Two to three days.'),
+        pkdeFiller(),
+        pkdeDetails('Do you ship abroad?', 'Yes, to Europe.'),
+        pkdeDetails('Can I pay by card?', 'Yes.'),
+        pkdeDetails('Is it guaranteed?', 'For two years.'),
+        pkdeDetails('Can I return it?', 'Within 30 days.'),
+        pkdeFiller(),
+        ['blockName' => 'core/paragraph', 'attrs' => [], 'innerBlocks' => [], 'innerHTML' => '<p>Thanks.</p>'],
+    ];
+
+    $rows = pkde_faq_inventory_rows([['slug' => 'contact-us', 'blocks' => $blocks]], $render, $serialize);
+
+    expect($rows)->toHaveCount(6)
+        ->and($rows[1])->toBe(['contact-us', '0', 'F.A.Q.', 'How long is delivery?', 'Two to three days.', pkde_faq_hash('How long is delivery?'), 'details'])
+        ->and(array_column($rows, 3))->toBe(['question', 'How long is delivery?', 'Do you ship abroad?', 'Can I pay by card?', 'Is it guaranteed?', 'Can I return it?'])
+        ->and(pkde_faq_loose_details($blocks))->toBe(0);
+
+    $new = pkde_faq_walk($blocks, function ($block, $kind, $i) {
+        expect($kind)->toBe('details')->and($i)->toBe(0)->and($block['attrs'])->toBe(['heading' => 'F.A.Q.', 'consumesHeading' => true])->and($block['innerBlocks'])->toHaveCount(5);
+
+        return ['blockName' => 'sage/faq', 'attrs' => ['groups' => [7]], 'innerBlocks' => [], 'innerHTML' => '', 'innerContent' => []];
+    });
+    $names = array_map(fn($b) => $b['blockName'] ?? '(filler)', $new);
+
+    // the heading and the five Details became one FAQ block; the paragraphs around them stay
+    expect($names)->toBe(['core/paragraph', '(filler)', '(filler)', 'sage/faq', '(filler)', 'core/paragraph'])->and(array_filter($new, fn($b) => ($b['blockName'] ?? '') === 'core/details'))->toBe([]);
+});
+
+it('also finds Details blocks inside a Group or Section whose heading matches, leaving that heading where it is', function () use ($render, $serialize) {
+    $blocks = [['blockName' => 'sage/section', 'attrs' => [], 'innerHTML' => '', 'innerBlocks' => [
+        pkdeHeading('Frequently asked questions'),
+        ['blockName' => 'core/paragraph', 'attrs' => [], 'innerBlocks' => [], 'innerHTML' => '<p>Some words first.</p>'],
+        pkdeDetails('One?', 'a'),
+        pkdeDetails('Two?', 'b'),
+    ]]];
+
+    $new = pkde_faq_walk($blocks, function ($block, $kind) {
+        expect($block['attrs']['consumesHeading'])->toBeFalse()->and($block['attrs']['heading'])->toBe('Frequently asked questions');
+
+        return ['blockName' => 'sage/faq', 'attrs' => ['groups' => [1]], 'innerBlocks' => [], 'innerHTML' => '', 'innerContent' => []];
+    });
+
+    expect(array_column($new[0]['innerBlocks'], 'blockName'))->toBe(['core/heading', 'core/paragraph', 'sage/faq'])
+        ->and(pkde_faq_inventory_rows([['slug' => 'faq-page', 'blocks' => $blocks]], $render, $serialize))->toHaveCount(3);
+});
+
+it('leaves Details blocks elsewhere alone and counts them as loose, for a person to check', function () use ($render, $serialize) {
+    $blocks = [
+        pkdeHeading('Our materials'),
+        pkdeDetails('Is it organic?', 'Yes.'),
+        pkdeDetails('Is it soft?', 'Very.'),
+        ['blockName' => 'core/paragraph', 'attrs' => [], 'innerBlocks' => [], 'innerHTML' => '<p>x</p>'],
+        pkdeDetails('Another one?', 'Yes.'),
+    ];
+
+    $visited = false;
+    $new = pkde_faq_walk($blocks, function () use (&$visited) {
+        $visited = true;
+
+        return null;
+    });
+
+    expect($visited)->toBeFalse()->and($new)->toBe($blocks)->and(pkde_faq_loose_details($blocks))->toBe(2) // two runs
+        ->and(pkde_faq_inventory_rows([['slug' => 'materials', 'blocks' => $blocks]], $render, $serialize))->toHaveCount(1); // the header only
+});
+
+it('reads a synced pattern like a page and finds where it is placed (el: a wp_block of ten Details blocks)', function () use ($render, $serialize) {
+    $details = [];
+    foreach (range(1, 10) as $n) {
+        $details[] = pkdeDetails("Solar question $n?", "Answer $n.");
+    }
+
+    $rows = pkde_faq_inventory_rows([['slug' => 'el-faq-solar-systems', 'blocks' => array_merge([pkdeHeading('Solar systems FAQ')], $details)]], $render, $serialize);
+
+    expect($rows)->toHaveCount(11)->and($rows[1][0])->toBe('el-faq-solar-systems')->and($rows[1][2])->toBe('Solar systems FAQ')->and($rows[10][3])->toBe('Solar question 10?');
+
+    expect(pkde_faq_content_uses_block('<!-- wp:paragraph --><p>x</p><!-- /wp:paragraph --><!-- wp:block {"ref":4242} /-->', 4242))->toBeTrue()
+        ->and(pkde_faq_content_uses_block('<!-- wp:block {"ref":42420} /-->', 4242))->toBeFalse()
+        ->and(pkde_faq_content_uses_block('<!-- wp:paragraph --><p>{"ref":4242}</p>', 4242))->toBeFalse();
+
+    $dir = sys_get_temp_dir() . '/pkde-faq-blk-' . bin2hex(random_bytes(4));
+    mkdir("$dir/resources/views", 0777, true);
+    file_put_contents("$dir/resources/views/category.blade.php", "{!! do_blocks(get_post(4242)->post_content) !!}");
+    file_put_contents("$dir/resources/views/slug.blade.php", "{{-- el-faq-solar-systems --}}");
+    file_put_contents("$dir/resources/views/other.blade.php", "{!! do_blocks(\$x) !!} 99");
+
+    expect(pkde_faq_files_printing_block($dir, 4242, 'el-faq-solar-systems'))->toBe(['resources/views/category.blade.php', 'resources/views/slug.blade.php']);
+});
+
+it('says in the script how details, synced patterns and loose Details are handled', function () {
+    $source = file_get_contents(dirname(__DIR__, 2) . '/bin/deploy/faq-migrate.php');
+
+    expect($source)->toContain('PKDE_FAQ_KIND_DETAILS', "'wp_block'", 'used by:', 'CHECK BY HAND', 'pkde_faq_loose_details', "post_content LIKE '%wp:details%'", 'consumesHeading');
+});

@@ -9,6 +9,7 @@
 const PKDE_FAQ_KIND_KIT = 'sage-faq';
 const PKDE_FAQ_KIND_RANK_MATH = 'rank-math';
 const PKDE_FAQ_KIND_ACCORDION = 'accordion';
+const PKDE_FAQ_KIND_DETAILS = 'details';
 
 /** A question or answer as plain text: tags and entities removed, spaces collapsed. */
 function pkde_faq_text(string $html): string
@@ -47,33 +48,152 @@ function pkde_faq_kind(array $block): ?string
     return null;
 }
 
+/** True for a heading that introduces FAQs: "FAQ", "FAQs", "F.A.Q.", "Questions", "Frequently asked questions". */
+function pkde_faq_heading_matches(string $text): bool
+{
+    return preg_match('/faq|f\.a\.q|questions/i', $text) === 1;
+}
+
+/** A whitespace-only block between two blocks (the freeform filler parse_blocks leaves). */
+function pkde_faq_is_blank(array $block): bool
+{
+    return ($block['blockName'] ?? null) === null && trim((string) ($block['innerHTML'] ?? '')) === '';
+}
+
+/** The question of a core Details block: its summary. */
+function pkde_faq_details_summary(array $block): string
+{
+    if (isset($block['attrs']['summary']) && is_string($block['attrs']['summary'])) {
+        return $block['attrs']['summary'];
+    }
+
+    return preg_match('~<summary\b[^>]*>(.*?)</summary>~is', (string) ($block['innerHTML'] ?? ''), $m) === 1 ? $m[1] : '';
+}
+
+/** The text of a core heading block, or null when the block is not a heading. */
+function pkde_faq_heading_text(array $block): ?string
+{
+    return ($block['blockName'] ?? '') === 'core/heading' ? pkde_faq_text((string) ($block['attrs']['content'] ?? $block['innerHTML'] ?? '')) : null;
+}
+
 /**
  * Walk parsed blocks in document order. `$visit($block, $kind, $index)` is called for each FAQ block (the index counts them per page, from 0) and returns null to keep it or a
  * replacement block. The inside of a FAQ block is not walked (its items are its questions).
  *
+ * A run of one or more consecutive core Details blocks is one FAQ block (kind `details`, a virtual block whose inner blocks are the Details blocks) when a heading that matches
+ * pkde_faq_heading_matches() comes directly before it (the heading is then the FAQ block's heading and the replacement takes its place), or when the Group or Section it
+ * sits in has such a heading (the heading stays where it is). Details blocks anywhere else are not touched; `$loose` counts those runs.
+ *
+ * @param  string  $containerHeading  the matching heading of the Group or Section the blocks are in, '' if none
  * @return array the (possibly changed) blocks
  */
-function pkde_faq_walk(array $blocks, callable $visit, int &$index = 0): array
+function pkde_faq_walk(array $blocks, callable $visit, int &$index = 0, string $containerHeading = '', ?\ArrayObject $loose = null): array
 {
-    foreach ($blocks as $i => $block) {
+    $out = [];
+    $count = count($blocks);
+
+    for ($i = 0; $i < $count; $i++) {
+        $block = $blocks[$i];
         $kind = pkde_faq_kind($block);
 
         if ($kind !== null) {
             $replacement = $visit($block, $kind, $index++);
+            $out[] = $replacement ?? $block;
+
+            continue;
+        }
+
+        if (($block['blockName'] ?? '') === 'core/details') {
+            $end = $i;
+            $details = [];
+
+            for ($j = $i; $j < $count; $j++) {
+                if (($blocks[$j]['blockName'] ?? '') === 'core/details') {
+                    $details[] = $blocks[$j];
+                    $end = $j;
+                } elseif (! pkde_faq_is_blank($blocks[$j])) {
+                    break;
+                }
+            }
+
+            // the heading directly before the run (blank blocks skipped)
+            $previous = null;
+            for ($k = count($out) - 1; $k >= 0; $k--) {
+                if (! pkde_faq_is_blank($out[$k])) {
+                    $previous = $k;
+                    break;
+                }
+            }
+
+            $text = $previous !== null ? pkde_faq_heading_text($out[$previous]) : null;
+            $immediate = $text !== null && pkde_faq_heading_matches($text);
+            $heading = $immediate ? $text : $containerHeading;
+
+            if ($heading === '') {
+                $loose?->offsetSet('loose', $loose['loose'] + 1);
+                for ($m = $i; $m <= $end; $m++) {
+                    $out[] = $blocks[$m];
+                }
+                $i = $end;
+
+                continue;
+            }
+
+            $virtual = ['blockName' => 'pkde/details-run', 'attrs' => ['heading' => $heading, 'consumesHeading' => $immediate], 'innerBlocks' => $details, 'innerHTML' => '', 'innerContent' => []];
+            $replacement = $visit($virtual, PKDE_FAQ_KIND_DETAILS, $index++);
 
             if ($replacement !== null) {
-                $blocks[$i] = $replacement;
+                if ($immediate) {
+                    array_splice($out, $previous, 1); // the heading becomes the FAQ block's heading
+                }
+                $out[] = $replacement;
+            } else {
+                for ($m = $i; $m <= $end; $m++) {
+                    $out[] = $blocks[$m];
+                }
             }
+            $i = $end;
 
             continue;
         }
 
         if (! empty($block['innerBlocks'])) {
-            $blocks[$i]['innerBlocks'] = pkde_faq_walk($block['innerBlocks'], $visit, $index);
+            $inside = '';
+
+            if (in_array($block['blockName'] ?? '', ['core/group', 'sage/section'], true)) {
+                foreach ($block['innerBlocks'] as $child) {
+                    $text = pkde_faq_heading_text($child);
+
+                    if ($text !== null && pkde_faq_heading_matches($text)) {
+                        $inside = $text;
+                        break;
+                    }
+                }
+            }
+
+            $block['innerBlocks'] = pkde_faq_walk($block['innerBlocks'], $visit, $index, $inside, $loose);
         }
+
+        $out[] = $block;
     }
 
-    return $blocks;
+    return $out;
+}
+
+/** How many runs of core Details blocks on a page are NOT under a FAQ heading (for a person to check by hand). */
+function pkde_faq_loose_details(array $blocks): int
+{
+    $loose = new \ArrayObject(['loose' => 0]);
+    $index = 0;
+    pkde_faq_walk($blocks, fn() => null, $index, '', $loose);
+
+    return (int) $loose['loose'];
+}
+
+/** True when post content places the synced pattern (reusable block) with that id: `<!-- wp:block {"ref":ID} /-->`. */
+function pkde_faq_content_uses_block(string $content, int $id): bool
+{
+    return preg_match('/<!--\s*wp:block\s*\{[^}]*"ref"\s*:\s*' . $id . '\b/', $content) === 1;
 }
 
 /** The heading of a FAQ block (plain text). */
@@ -100,6 +220,19 @@ function pkde_faq_items(array $block, string $kind, callable $render, callable $
                 $content = (string) ($q['content'] ?? '');
                 $items[] = [(string) $q['title'], pkde_faq_html_to_blocks($content), $content];
             }
+        }
+
+        return $items;
+    }
+
+    if ($kind === PKDE_FAQ_KIND_DETAILS) {
+        foreach ((array) ($block['innerBlocks'] ?? []) as $item) {
+            if (pkde_faq_text(pkde_faq_details_summary($item)) === '') {
+                continue;
+            }
+
+            $inner = (array) ($item['innerBlocks'] ?? []);
+            $items[] = [pkde_faq_details_summary($item), $serialize($inner), implode('', array_map($render, $inner))];
         }
 
         return $items;
@@ -267,6 +400,42 @@ function pkde_faq_blade_files(string $themeDir): array
             $source = (string) file_get_contents($file->getPathname());
 
             if (preg_match('/FAQPage|class="[^"]*\bfaq\b|id="faq|accordion[^\n]{0,60}faq/i', $source) === 1) {
+                $found[] = ltrim(substr($file->getPathname(), strlen(rtrim($themeDir, '/'))), '/');
+            }
+        }
+    }
+
+    sort($found);
+
+    return $found;
+}
+
+/**
+ * The theme files (views and app code) that look as if they print a synced pattern: they name its slug, or print blocks (`wp_block`, `do_blocks`, `render_block`) and name its id.
+ *
+ * @return list<string> paths relative to $themeDir
+ */
+function pkde_faq_files_printing_block(string $themeDir, int $id, string $slug): array
+{
+    $found = [];
+
+    foreach (['resources/views', 'app'] as $sub) {
+        $dir = rtrim($themeDir, '/') . '/' . $sub;
+
+        if (! is_dir($dir)) {
+            continue;
+        }
+
+        foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS)) as $file) {
+            if (! $file->isFile() || ! preg_match('/\.(blade\.php|php)$/', $file->getFilename())) {
+                continue;
+            }
+
+            $source = (string) file_get_contents($file->getPathname());
+            $named = $slug !== '' && str_contains($source, $slug);
+            $printed = preg_match('/wp_block|do_blocks|render_block/', $source) === 1 && preg_match('/\b' . $id . '\b/', $source) === 1;
+
+            if ($named || $printed) {
                 $found[] = ltrim(substr($file->getPathname(), strlen(rtrim($themeDir, '/'))), '/');
             }
         }

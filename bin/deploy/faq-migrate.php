@@ -3,7 +3,7 @@
 /**
  * Moves a site's FAQs from the pages that hold them into the FAQs post type and its groups (WP-102). Run it with WP-CLI's eval-file, in two steps:
  *
- *   plan   (read-only)  lists every page with a kit FAQ block (typed by hand), a Rank Math FAQ block, or an accordion headed "FAQ", with its question count; names the theme files that
+ *   plan   (read-only)  lists every page with a kit FAQ block (typed by hand), a Rank Math FAQ block, an accordion headed "FAQ", or a run of core Details blocks under a FAQ heading, with its question count (a synced pattern, a `wp_block` post, is scanned like a page and where it is used is listed); names the theme files that
  *                       look like a hand-coded FAQ (a person moves those); writes the inventory CSV (page slug, block index, block heading, question, the first 120 characters of the answer,
  *                       a stable question hash, the block kind: no personal data) to the path given as out=. The site's agent proposes the groups from that file, the owner approves them.
  *
@@ -44,8 +44,9 @@ global $wpdb;
 
 /** Every post that may hold a FAQ block, oldest first: id, slug, type, status, and its parsed blocks. @return list<array{id:int, slug:string, type:string, blocks:array, post:WP_Post}> */
 $pkdePages = function () use ($wpdb): array {
+    $GLOBALS['pkde_faq_loose'] = [];
     $ids = $wpdb->get_col("SELECT ID FROM {$wpdb->posts} WHERE post_status IN ('publish','draft','pending','private','future') AND post_type NOT IN ('revision','pkde_faq','nav_menu_item','attachment')
-        AND (post_content LIKE '%wp:sage/faq%' OR post_content LIKE '%wp:rank-math/faq-block%' OR post_content LIKE '%wp:sage/accordion%') ORDER BY ID ASC");
+        AND (post_content LIKE '%wp:sage/faq%' OR post_content LIKE '%wp:rank-math/faq-block%' OR post_content LIKE '%wp:sage/accordion%' OR post_content LIKE '%wp:details%') ORDER BY ID ASC");
     $pages = [];
 
     foreach ($ids as $id) {
@@ -60,6 +61,13 @@ $pkdePages = function () use ($wpdb): array {
 
         if ($found) {
             $pages[] = ['id' => (int) $post->ID, 'slug' => (string) $post->post_name, 'type' => $post->post_type, 'blocks' => $blocks, 'post' => $post];
+        }
+
+        // core Details blocks that are not under a FAQ heading: listed by plan, never migrated
+        $loose = pkde_faq_loose_details($blocks);
+
+        if ($loose > 0) {
+            $GLOBALS['pkde_faq_loose'][(string) ($post->post_name ?: $post->ID) . ' (' . $post->post_type . ')'] = $loose;
         }
     }
 
@@ -103,10 +111,31 @@ if ($opts['mode'] === 'plan') {
     foreach ($pages as $page) {
         $index = 0;
         pkde_faq_walk($page['blocks'], function (array $block, string $kind, int $i) use ($page, $render, $serialize) {
-            printf("  %s#%d  %s  %d question(s)%s\n", $page['slug'], $i, $kind, count(pkde_faq_items($block, $kind, $render, $serialize)), pkde_faq_block_heading($block, $kind) !== '' ? '  "' . pkde_faq_block_heading($block, $kind) . '"' : '');
+            printf("  %s#%d  %s  %d question(s)%s%s\n", $page['slug'], $i, $kind, count(pkde_faq_items($block, $kind, $render, $serialize)), pkde_faq_block_heading($block, $kind) !== '' ? '  "' . pkde_faq_block_heading($block, $kind) . '"' : '', $page['type'] === 'wp_block' ? '  [synced pattern]' : '');
 
             return null;
         }, $index);
+
+        if ($page['type'] === 'wp_block') {
+            $users = [];
+
+            foreach ($wpdb->get_results($wpdb->prepare("SELECT ID, post_name, post_type, post_content FROM {$wpdb->posts} WHERE post_status <> 'trash' AND post_type NOT IN ('revision', 'wp_block') AND post_content LIKE %s", '%wp:block%')) as $user) {
+                if (pkde_faq_content_uses_block((string) $user->post_content, $page['id'])) {
+                    $users[] = ($user->post_name ?: $user->ID) . ' (' . $user->post_type . ')';
+                }
+            }
+
+            foreach ($wpdb->get_results($wpdb->prepare("SELECT t.slug, tt.taxonomy, tt.description FROM {$wpdb->term_taxonomy} tt JOIN {$wpdb->terms} t ON t.term_id = tt.term_id WHERE tt.description LIKE %s", '%wp:block%')) as $term) {
+                if (pkde_faq_content_uses_block((string) $term->description, $page['id'])) {
+                    $users[] = $term->slug . ' (' . $term->taxonomy . ' term description)';
+                }
+            }
+
+            $files = pkde_faq_files_printing_block(get_template_directory(), $page['id'], $page['slug']);
+            echo '    used by: ' . ($users ? implode(', ', $users) : 'no post or term description holds it') . ".\n";
+            echo $files ? '    CHECK BY HAND (theme files that may print it): ' . implode(', ', $files) . ".\n" : '';
+            echo "    (apply rewrites this pattern's content, so every place that uses it follows)\n";
+        }
     }
 
     $ambiguous = array_keys(array_filter($slugs, fn($n) => $n > 1));
@@ -115,6 +144,9 @@ if ($opts['mode'] === 'plan') {
     if ($ambiguous) {
         echo 'WARN: more than one post has the slug ' . implode(', ', $ambiguous) . ": a mapping key <slug>#<index> would be ambiguous, give those posts distinct slugs first.\n";
     }
+
+    $looseList = (array) ($GLOBALS['pkde_faq_loose'] ?? []);
+    echo $looseList ? 'CHECK BY HAND (core Details blocks that are not under a FAQ heading, not migrated): ' . implode(', ', array_map(fn($slug, $n) => "$slug ($n run" . ($n > 1 ? 's' : '') . ')', array_keys($looseList), $looseList)) . ".\n" : '';
 
     $blade = pkde_faq_blade_files(get_template_directory());
     echo $blade ? 'Hand-coded FAQs for a person to move (theme files): ' . implode(', ', $blade) . ".\n" : "No theme file looks like a hand-coded FAQ.\n";
@@ -287,6 +319,11 @@ foreach ($pages as $page) {
             if (isset($block['attrs'][$keep]) && $block['attrs'][$keep] !== '') {
                 $attrs[$keep] = $block['attrs'][$keep];
             }
+        }
+
+        if ($kind === PKDE_FAQ_KIND_DETAILS) {
+            // the heading in front of the Details became this block's heading; a heading further up (in the Group or Section) stays where it is, and the block prints none
+            $attrs['heading'] = ! empty($block['attrs']['consumesHeading']) ? (string) $block['attrs']['heading'] : '';
         }
 
         return ['blockName' => 'sage/faq', 'attrs' => $attrs, 'innerBlocks' => [], 'innerHTML' => '', 'innerContent' => []];
