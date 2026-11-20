@@ -279,6 +279,66 @@ function pkde_drift_global_blocks_facts(): array
 }
 
 /**
+ * The FAQs post type (WP-102, platform module faq): that it has no public URL, archive or sitemap entry, who may manage it, the FAQ blocks still typed by hand, and the
+ * groups with no FAQ. Null when the post type is not registered (an older platform, or the module is switched off).
+ *
+ * @return array<string, mixed>|null
+ */
+function pkde_drift_faq_facts(): ?array
+{
+    global $wpdb;
+
+    if (! function_exists('post_type_exists') || ! post_type_exists('pkde_faq')) {
+        return null;
+    }
+
+    $type = get_post_type_object('pkde_faq');
+    $inSitemap = false;
+
+    if (function_exists('wp_sitemaps_get_server')) {
+        $provider = wp_sitemaps_get_server()->registry->get_provider('posts');
+        $inSitemap = $provider && in_array('pkde_faq', array_keys((array) $provider->get_object_subtypes()), true);
+    }
+
+    $hasCap = fn(string $role) => ($r = get_role($role)) ? $r->has_cap('manage_pkde_faqs') : false;
+
+    // FAQ blocks still typed by hand: a kit FAQ block with no group, on a page
+    $typed = [];
+    $ids = isset($wpdb) ? $wpdb->get_col("SELECT ID FROM {$wpdb->posts} WHERE post_status IN ('publish','draft','pending','private','future') AND post_type NOT IN ('revision','pkde_faq') AND post_content LIKE '%wp:sage/faq%' ORDER BY ID ASC LIMIT 200") : [];
+    $walk = function (array $blocks) use (&$walk): int {
+        $n = 0;
+        foreach ($blocks as $block) {
+            $n += (($block['blockName'] ?? '') === 'sage/faq' && empty($block['attrs']['groups'])) ? 1 : 0;
+            $n += $walk((array) ($block['innerBlocks'] ?? []));
+        }
+
+        return $n;
+    };
+    foreach ($ids as $id) {
+        $post = get_post((int) $id);
+        $count = $post ? $walk(parse_blocks($post->post_content)) : 0;
+        if ($count > 0) {
+            $typed[$post->post_name ?: (string) $id] = $count;
+        }
+    }
+
+    $terms = taxonomy_exists('pkde_faq_group') ? get_terms(['taxonomy' => 'pkde_faq_group', 'hide_empty' => false]) : [];
+
+    return [
+        'public' => (bool) $type->public || (bool) $type->publicly_queryable,
+        'rewrite' => (bool) $type->rewrite,
+        'has_archive' => (bool) $type->has_archive,
+        'in_sitemap' => $inSitemap,
+        'admin_cap' => $hasCap('administrator'),
+        'editor_cap' => $hasCap('editor'),
+        'seo_role' => (bool) get_role('pkde_seo'),
+        'seo_cap' => $hasCap('pkde_seo'),
+        'typed_blocks' => $typed,
+        'empty_groups' => is_wp_error($terms) ? [] : array_values(array_map(fn($t) => $t->slug, array_filter($terms, fn($t) => (int) $t->count === 0))),
+    ];
+}
+
+/**
  * Pure comparison of collected facts with the standard.
  *
  * @param  array<string,mixed>  $f  facts from pkde_drift_collect()
@@ -610,6 +670,29 @@ function pkde_drift_evaluate(array $f): array
         }
         if ($c['rank_math_visible'] !== null) {
             $cmp('Block editor: Rank Math blocks hidden from the inserter', (array) $c['rank_math_visible'] === [], 'still in the inserter: ' . implode(', ', (array) $c['rank_math_visible']));
+        }
+    }
+
+    // FAQs (WP-102): the post type is not a public thing, the right people manage it, the old hand-typed blocks and empty groups are listed. Only when the facts carry the key.
+    if (array_key_exists('faq', $f)) {
+        $q = $f['faq'];
+        if (! is_array($q)) {
+            $add('INFO', 'FAQs post type', 'the platform faq module is not loaded (an older platform release, or PKDE_PLATFORM_DISABLE names it)');
+        } else {
+            $cmp('FAQs: no public URL, archive or search', empty($q['public']) && empty($q['rewrite']) && empty($q['has_archive']), 'the pkde_faq post type is public, publicly queryable, has an archive or a rewrite');
+            $cmp('FAQs: not listed in the sitemap', empty($q['in_sitemap']), 'pkde_faq is in the sitemap');
+            $missing = array_keys(array_filter(['Administrator lacks manage_pkde_faqs' => empty($q['admin_cap']), 'the SEO role is missing' => empty($q['seo_role']), 'the SEO role lacks manage_pkde_faqs' => ! empty($q['seo_role']) && empty($q['seo_cap']), 'Editors have manage_pkde_faqs' => ! empty($q['editor_cap'])]));
+            $cmp('FAQs: Administrators and the SEO role manage them, Editors do not', $missing === [], implode('; ', $missing) . ' (the platform faq module installs the capability and the role)');
+            if (! empty($q['typed_blocks'])) {
+                $list = [];
+                foreach ((array) $q['typed_blocks'] as $slug => $n) {
+                    $list[] = "$slug ($n)";
+                }
+                $add('INFO', 'FAQ blocks still typed by hand', count($list) . ' page(s): ' . implode(', ', $list) . ' (bin/deploy/faq-migrate.php plan, then apply with the approved mapping)');
+            }
+            if (! empty($q['empty_groups'])) {
+                $add('WARN', 'FAQ groups with no published FAQ', implode(', ', (array) $q['empty_groups']));
+            }
         }
     }
 
@@ -990,6 +1073,7 @@ function pkde_drift_collect(): array
         'editor_settings' => pkde_drift_editor_settings_facts(),
         'editor_catalog' => pkde_drift_editor_catalog_facts(),
         'global_blocks' => pkde_drift_global_blocks_facts(),
+        'faq' => pkde_drift_faq_facts(),
         'turnstile' => [
             'appearance' => get_option('cfturnstile_appearance', 'always'),
             'login' => get_option('cfturnstile_login'),

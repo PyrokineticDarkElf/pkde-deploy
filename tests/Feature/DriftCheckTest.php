@@ -897,3 +897,34 @@ it('checks the editor catalogue and the global blocks (WP-100): no bundled patte
     $statuses = pkdeStatuses($facts);
     expect($statuses)->not->toHaveKey('Global block cta-band has its declared content')->not->toHaveKey('Block editor: Rank Math blocks hidden from the inserter')->not->toHaveKey('Block editor: no core or WooCommerce patterns registered');
 });
+
+it('checks the FAQs post type (WP-102): no public URL or sitemap entry, who manages it, the hand-typed blocks and the empty groups', function () {
+    $facts = pkdeGoodFacts();
+    $facts['faq'] = ['public' => false, 'rewrite' => false, 'has_archive' => false, 'in_sitemap' => false, 'admin_cap' => true, 'editor_cap' => false, 'seo_role' => true, 'seo_cap' => true, 'typed_blocks' => [], 'empty_groups' => []];
+    $statuses = pkdeStatuses($facts);
+
+    expect($statuses['FAQs: no public URL, archive or search'])->toBe('PASS')
+        ->and($statuses['FAQs: not listed in the sitemap'])->toBe('PASS')
+        ->and($statuses['FAQs: Administrators and the SEO role manage them, Editors do not'])->toBe('PASS')
+        ->and($statuses)->not->toHaveKey('FAQ blocks still typed by hand')->not->toHaveKey('FAQ groups with no published FAQ');
+
+    $facts['faq']['public'] = true;
+    $facts['faq']['in_sitemap'] = true;
+    $facts['faq']['editor_cap'] = true;
+    $facts['faq']['seo_role'] = false;
+    $facts['faq']['typed_blocks'] = ['shipping' => 3, 'returns' => 2];
+    $facts['faq']['empty_groups'] = ['care'];
+    $statuses = pkdeStatuses($facts);
+
+    expect($statuses['FAQs: no public URL, archive or search'])->toBe('FAIL')
+        ->and($statuses['FAQs: not listed in the sitemap'])->toBe('FAIL')
+        ->and($statuses['FAQs: Administrators and the SEO role manage them, Editors do not'])->toBe('FAIL')
+        ->and($statuses['FAQ blocks still typed by hand'])->toBe('INFO')
+        ->and($statuses['FAQ groups with no published FAQ'])->toBe('WARN');
+
+    $facts['faq'] = null;
+    expect(pkdeStatuses($facts)['FAQs post type'])->toBe('INFO');
+
+    unset($facts['faq']);
+    expect(pkdeStatuses($facts))->not->toHaveKey('FAQs post type');
+});
