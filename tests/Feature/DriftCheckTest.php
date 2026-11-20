@@ -872,3 +872,28 @@ it('judges the block editor by role from the platform module (WP-100): PASS when
     unset($facts['editor_settings']);
     expect(pkdeStatuses($facts))->not->toHaveKey('Block editor settings by role');
 });
+
+it('checks the editor catalogue and the global blocks (WP-100): no bundled patterns, Rank Math hidden, a used global block has its declaration', function () {
+    $facts = pkdeGoodFacts();
+    $facts['editor_catalog'] = ['bundled_patterns' => 0, 'rank_math_visible' => []];
+    $facts['global_blocks'] = ['cta-band' => ['pages' => 3, 'declared' => true]];
+    $statuses = pkdeStatuses($facts);
+
+    expect($statuses['Block editor: no core or WooCommerce patterns registered'])->toBe('PASS')
+        ->and($statuses['Block editor: Rank Math blocks hidden from the inserter'])->toBe('PASS')
+        ->and($statuses['Global block cta-band has its declared content'])->toBe('PASS');
+
+    $facts['editor_catalog'] = ['bundled_patterns' => 112, 'rank_math_visible' => ['rank-math/faq-block']];
+    $facts['global_blocks'] = ['cta-band' => ['pages' => 3, 'declared' => false]];
+    $statuses = pkdeStatuses($facts);
+
+    expect($statuses['Block editor: no core or WooCommerce patterns registered'])->toBe('FAIL')
+        ->and($statuses['Block editor: Rank Math blocks hidden from the inserter'])->toBe('FAIL')
+        ->and($statuses['Global block cta-band has its declared content'])->toBe('FAIL');
+
+    // a block no page uses needs no declaration; no Rank Math blocks or no module: no row
+    $facts['global_blocks'] = ['cta-band' => ['pages' => 0, 'declared' => false]];
+    $facts['editor_catalog'] = ['bundled_patterns' => null, 'rank_math_visible' => null];
+    $statuses = pkdeStatuses($facts);
+    expect($statuses)->not->toHaveKey('Global block cta-band has its declared content')->not->toHaveKey('Block editor: Rank Math blocks hidden from the inserter')->not->toHaveKey('Block editor: no core or WooCommerce patterns registered');
+});

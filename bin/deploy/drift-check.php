@@ -230,6 +230,55 @@ function pkde_drift_editor_settings_facts(): ?array
 }
 
 /**
+ * The block editor's bundled patterns and Rank Math's blocks (WP-100): how many WordPress or WooCommerce patterns are still registered, and whether every registered
+ * Rank Math block is hidden from the inserter. Null for each part that does not apply (no platform module, no Rank Math blocks).
+ *
+ * @return array{bundled_patterns: ?int, rank_math_visible: ?list<string>}
+ */
+function pkde_drift_editor_catalog_facts(): array
+{
+    $facts = ['bundled_patterns' => null, 'rank_math_visible' => null];
+
+    if (! function_exists('App\\MuPlugins\\editor_settings_state') || ! class_exists('WP_Block_Patterns_Registry')) {
+        return $facts;
+    }
+
+    $names = array_keys(\WP_Block_Patterns_Registry::get_instance()->get_all_registered());
+    $facts['bundled_patterns'] = count(App\MuPlugins\editor_patterns_to_remove($names));
+
+    $types = class_exists('WP_Block_Type_Registry') ? array_filter(\WP_Block_Type_Registry::get_instance()->get_all_registered(), fn($type, $name) => str_starts_with((string) $name, 'rank-math/'), ARRAY_FILTER_USE_BOTH) : [];
+
+    if ($types) {
+        $facts['rank_math_visible'] = array_values(array_keys(array_filter($types, fn($type) => ($type->supports['inserter'] ?? true) !== false)));
+    }
+
+    return $facts;
+}
+
+/**
+ * The global blocks (tier 3, WP-100) a site uses and what it declares for them: a block printed on published pages with nothing declared prints nothing.
+ *
+ * @return array<string, array{pages: int, declared: bool}> block name => pages using it, and whether config/pkde-sections.php has its text
+ */
+function pkde_drift_global_blocks_facts(): array
+{
+    global $wpdb;
+
+    if (! function_exists('App\\section_declaration') || ! isset($wpdb)) {
+        return [];
+    }
+
+    $facts = [];
+
+    foreach (['cta-band' => 'text'] as $name => $required) {
+        $pages = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_status = 'publish' AND post_content LIKE %s", '%wp:sage/' . $wpdb->esc_like($name) . '%'));
+        $facts[$name] = ['pages' => $pages, 'declared' => trim((string) (App\section_declaration($name)[$required] ?? '')) !== ''];
+    }
+
+    return $facts;
+}
+
+/**
  * Pure comparison of collected facts with the standard.
  *
  * @param  array<string,mixed>  $f  facts from pkde_drift_collect()
@@ -551,6 +600,24 @@ function pkde_drift_evaluate(array $f): array
             $listed[] = $differ === 0 ? "$path (identical to the kit: delete it)" : ($differ < 0 ? "$path (the kit has no such view any more)" : "$path ($differ lines differ from the kit's)");
         }
         $add('INFO', 'Kit view overrides', count($listed) . ': ' . implode('; ', $listed));
+    }
+
+    // The editor's catalogue (WP-100): no WordPress or WooCommerce patterns, Rank Math's blocks hidden from the inserter. Only when the facts carry the key.
+    if (array_key_exists('editor_catalog', $f) && is_array($f['editor_catalog'])) {
+        $c = $f['editor_catalog'];
+        if ($c['bundled_patterns'] !== null) {
+            $cmp('Block editor: no core or WooCommerce patterns registered', (int) $c['bundled_patterns'] === 0, (int) $c['bundled_patterns'] . ' bundled patterns are still registered (the platform editor-settings module removes them)');
+        }
+        if ($c['rank_math_visible'] !== null) {
+            $cmp('Block editor: Rank Math blocks hidden from the inserter', (array) $c['rank_math_visible'] === [], 'still in the inserter: ' . implode(', ', (array) $c['rank_math_visible']));
+        }
+    }
+
+    // Global blocks (tier 3): a block used on published pages needs its declaration (config/pkde-sections.php), or it prints nothing.
+    foreach ((array) ($f['global_blocks'] ?? []) as $name => $g) {
+        if ((int) ($g['pages'] ?? 0) > 0) {
+            $cmp("Global block $name has its declared content", ! empty($g['declared']), "used on {$g['pages']} published page(s) but config/pkde-sections.php declares no text for it, so it prints nothing");
+        }
     }
 
     // The block editor by role (WP-100, platform module editor-settings): what a non-Administrator is offered. Only when the facts carry the key
@@ -921,6 +988,8 @@ function pkde_drift_collect(): array
         'personal_views' => pkde_drift_personal_views(get_template_directory() . '/resources/views'),
         'kit_overrides' => pkde_drift_kit_overrides(get_template_directory()),
         'editor_settings' => pkde_drift_editor_settings_facts(),
+        'editor_catalog' => pkde_drift_editor_catalog_facts(),
+        'global_blocks' => pkde_drift_global_blocks_facts(),
         'turnstile' => [
             'appearance' => get_option('cfturnstile_appearance', 'always'),
             'login' => get_option('cfturnstile_login'),
