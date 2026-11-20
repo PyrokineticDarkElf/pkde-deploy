@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026.11.20.3
+
+`faq-migrate.php` finds FAQs kept as core Details blocks and in synced patterns (WP-102, TPL-243, TPL-245; found by tcs and el). **Adopt:** bump `pkde/deploy` on tcs and el (and any site whose FAQs are Details blocks); nothing else changes for the other sites. Run `plan` again: it now lists what it missed before.
+
+- **Core Details blocks.** A run of one or more consecutive `core/details` blocks is one FAQ block when a heading matching /faq|f.a.q|questions/i comes directly before it (that heading becomes the FAQ block's heading and is removed), or when the Group or Section it sits in has such a heading (the heading stays where it is and the new block prints none). The question is the summary, the answer the inner blocks. `apply` replaces the run with one `sage/faq` group-mode block; the plan's inventory lists them with the kind `details`. tcs-like markup (five Details under an "F.A.Q." heading) and an el-like one are tested.
+- **Details blocks elsewhere are not touched:** `plan` lists them as "CHECK BY HAND" (page and number of runs).
+- **Synced patterns (`wp_block` posts).** `plan` and `apply` scan them like pages (the slug of the pattern is the page slug of the mapping key); `plan` lists where each is used: posts that place it, term descriptions that hold it, and the theme files that may print it ("CHECK BY HAND"). `apply` rewrites the pattern's content to one group-mode FAQ block, so every place that uses it follows; the old content stays as a revision.
+- Proved in real WordPress on the template stack: a contact page with five Details under "F.A.Q.", a Details block under another heading (left alone, listed), a synced pattern of three Details placed on a page and in a category description (plan listed both), `apply` twice (the second changed nothing, the pattern had 2 revisions, the placing page showed the three FAQs). Pest 138.
+
 ## 2026.11.20.2
 
 `bin/deploy/faq-migrate.php` and FAQ drift rows (WP-102, TPL-234; needs pkde/platform 2026.11.20.1). **Adopt:** bump `pkde/deploy`: bb now (staging pilot); tcs, js, el now; rp, bp, mds, jsd, cs after their December production release. Not Train-ready.
