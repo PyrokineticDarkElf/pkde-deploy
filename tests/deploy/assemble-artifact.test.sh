@@ -34,7 +34,13 @@ echo '# readme' > "$site/web/app/themes/sage/resources/views/README.md"
 echo '# readme' > "$site/web/app/themes/sage/resources/views/vendor/pkde-kit/README.md"
 echo '# readme' > "$site/web/app/themes/sage/app/README.md"
 
+# A site's repeatable content ships next to config/ (apply-pages.php), and so do the migration and page scripts.
+mkdir -p "$site/content/pages"
+echo '<!-- wp:paragraph --><p>x</p><!-- /wp:paragraph -->' > "$site/content/pages/home.html"
+
 (cd "$site" && bash "$REPO_ROOT/bin/deploy/assemble-artifact.sh" dist >/dev/null 2>&1)
+check "content/pages/home.html is in the artifact" "$([ -f "$site/dist/content/pages/home.html" ] && echo yes || echo no)" yes
+check "apply-pages.php and faq-migrate.php ship with their libraries" "$(ls "$site/dist/bin/deploy/apply-pages.php" "$site/dist/bin/deploy/apply-pages-lib.php" "$site/dist/bin/deploy/faq-migrate.php" "$site/dist/bin/deploy/faq-migrate-lib.php" 2>/dev/null | wc -l | tr -d ' ')" 4
 check "wordfence lib/.htaccess is in the artifact" "$([ -f "$site/dist/web/app/plugins/wordfence/lib/.htaccess" ] && echo yes || echo no)" yes
 check "w3tc pub/.htaccess is in the artifact" "$([ -f "$site/dist/web/app/plugins/w3-total-cache/pub/.htaccess" ] && echo yes || echo no)" yes
 check "w3tc ini/.htaccess is in the artifact" "$([ -f "$site/dist/web/app/plugins/w3-total-cache/ini/.htaccess" ] && echo yes || echo no)" yes
