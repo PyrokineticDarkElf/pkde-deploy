@@ -45,7 +45,7 @@ it('finds the form placeholders of a page file', function () {
 it('says how it works: plan by default, by slug, a revision, never creating a page, content/ then config/content', function () {
     $source = file_get_contents(dirname(__DIR__, 2) . '/bin/deploy/apply-pages.php');
 
-    expect($source)->toContain("'mode' => 'plan'", 'wp_save_post_revision', "'name' => \$slug", "'content/pages', 'config/content/pages'", 'page missing', 'matches', "kses_remove_filters")
+    expect($source)->toContain("'mode' => 'plan'", 'wp_save_post_revision', "'name' => pkde_pages_slug(\$file)", "'content/pages', 'config/content/pages'", 'page missing', 'matches', "kses_remove_filters")
         ->and($source)->not->toContain('wp_insert_post'); // it never creates a page
 });
 
@@ -55,4 +55,21 @@ it('finds the FAQ group placeholders in a page file, once each (TPL-258)', funct
 
     $source = file_get_contents(dirname(__DIR__, 2) . '/bin/deploy/apply-pages.php');
     expect($source)->toContain('{{faq-group:', 'pkde_faq_group', 'no FAQ group with the slug');
+});
+
+it('names the blocks a legal document may not hold, from the nested tree too (TPL-261)', function () {
+    $tree = [
+        ['blockName' => 'core/heading', 'innerBlocks' => []],
+        ['blockName' => null, 'innerBlocks' => []], // the filler between blocks
+        ['blockName' => 'core/group', 'innerBlocks' => [['blockName' => 'core/paragraph', 'innerBlocks' => []], ['blockName' => 'core/cover', 'innerBlocks' => []]]],
+        ['blockName' => 'sage/section', 'innerBlocks' => []],
+        ['blockName' => 'core/cover', 'innerBlocks' => []],
+    ];
+
+    expect(pkde_pages_disallowed_blocks($tree, PKDE_PAGES_LEGAL_BLOCKS))->toBe(['core/group', 'core/cover', 'sage/section'])
+        ->and(pkde_pages_disallowed_blocks([['blockName' => 'core/details', 'innerBlocks' => [['blockName' => 'core/list', 'innerBlocks' => [['blockName' => 'core/list-item', 'innerBlocks' => []]]]]]], PKDE_PAGES_LEGAL_BLOCKS))->toBe([])
+        ->and(PKDE_PAGES_LEGAL_BLOCKS)->toContain('core/table', 'core/quote', 'core/separator');
+
+    $source = file_get_contents(dirname(__DIR__, 2) . '/bin/deploy/apply-pages.php');
+    expect($source)->toContain('content/legal', "'pkde_legal'", 'not allowed in a legal document', 'legal-migrate apply converts the Page first');
 });

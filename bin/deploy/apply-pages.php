@@ -9,7 +9,8 @@
  *   bash bin/deploy/wp.sh eval-file bin/deploy/apply-pages.php apply
  *   ... dir=content/pages                                                  where the files are (the default); a path from the site's root, or absolute
  *
- * One file per page, content/pages/<slug>.html (block markup). For each file it:
+ * One file per page, content/pages/<slug>.html (block markup); and one per legal document, content/legal/<slug>.html, applied to the pkde_legal post with that slug (run legal-migrate
+ * apply first: it converts the Page; a file with a block outside the legal list is refused and the block named). For each file it:
  *   - finds the page by slug (any status); it never creates a page: a missing slug is reported;
  *   - resolves {{faq-group:<slug>}} to the id of that FAQ group, for the kit FAQ block in group mode ("groups":[{{faq-group:general-questions}}]); the group must exist, none is created;
  *   - resolves {{form:<key>}} to the Contact Form 7 form tagged with that key (App\form_id; for `contact` also the form titled "Contact Us" when none is tagged);
@@ -51,8 +52,20 @@ foreach ($wanted as $candidate) {
     }
 }
 
-if ($dir === null) {
-    echo 'No page files found (looked for ' . implode(' or ', $wanted) . "). Nothing was changed.\n";
+// Legal documents (WP-104): content/legal/<slug>.html is applied to the pkde_legal post with that slug (legal-migrate apply converts the Page first).
+$legalDir = null;
+
+foreach (isset($opts['legal']) ? [$opts['legal']] : ['content/legal'] as $candidate) {
+    foreach (str_starts_with($candidate, '/') ? [$candidate] : array_map(fn($root) => rtrim($root, '/') . '/' . $candidate, $roots) as $path) {
+        if (is_dir($path)) {
+            $legalDir = $path;
+            break 2;
+        }
+    }
+}
+
+if ($dir === null && $legalDir === null) {
+    echo 'No page files found (looked for ' . implode(' or ', $wanted) . " and content/legal). Nothing was changed.\n";
     exit(1);
 }
 
@@ -82,18 +95,22 @@ $formId = function (string $key) use ($wpdb): int {
     return 0;
 };
 
-$files = glob($dir . '/*.html') ?: [];
+$files = $dir !== null ? (glob($dir . '/*.html') ?: []) : [];
 sort($files);
+$legalFiles = $legalDir !== null ? (glob($legalDir . '/*.html') ?: []) : [];
+sort($legalFiles);
+$jobs = array_merge(array_map(fn($f) => [$f, 'page'], $files), array_map(fn($f) => [$f, 'pkde_legal'], $legalFiles));
 $counts = ['match' => 0, 'would update' => 0, 'updated' => 0, 'page missing' => 0, 'problem' => 0];
-echo "apply-pages ($mode): " . count($files) . " file(s)\n";
+echo "apply-pages ($mode): " . count($files) . ' file(s)' . ($legalFiles ? ' and ' . count($legalFiles) . ' legal file(s)' : '') . "\n";
 kses_remove_filters(); // wp-cli has no logged-in user: do not let kses rewrite the block markup
 
-foreach ($files as $file) {
-    $slug = pkde_pages_slug($file);
-    $page = get_posts(['post_type' => 'page', 'name' => $slug, 'post_status' => 'any', 'numberposts' => 1]);
+foreach ($jobs as [$file, $postType]) {
+    $isLegal = $postType === 'pkde_legal';
+    $slug = ($isLegal ? 'legal/' : '') . pkde_pages_slug($file);
+    $page = $isLegal && ! post_type_exists('pkde_legal') ? [] : get_posts(['post_type' => $postType, 'name' => pkde_pages_slug($file), 'post_status' => 'any', 'numberposts' => 1]);
 
     if (! $page) {
-        printf("%-24s page missing\n", $slug);
+        printf($isLegal ? "%-24s document missing (legal-migrate apply converts the Page first; nothing is created here)\n" : "%-24s page missing\n", $slug);
         $counts['page missing']++;
         continue;
     }
@@ -134,6 +151,17 @@ foreach ($files as $file) {
 
     if ($failed) {
         continue;
+    }
+
+    // a legal document is written with the legal block list only: a file with another block is refused, and the block is named
+    if ($isLegal) {
+        $notAllowed = pkde_pages_disallowed_blocks(parse_blocks($content), PKDE_PAGES_LEGAL_BLOCKS);
+
+        if ($notAllowed) {
+            printf("%-24s PROBLEM: block(s) not allowed in a legal document: %s\n", $slug, implode(', ', $notAllowed));
+            $counts['problem']++;
+            continue;
+        }
     }
 
     $missing = [];

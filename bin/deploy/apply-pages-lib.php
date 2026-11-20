@@ -79,3 +79,34 @@ function pkde_pages_faq_group_slugs(string $content): array
 
     return array_values(array_unique(array_map('strtolower', $m[1])));
 }
+
+/** The blocks a legal document may hold (the platform legal module's list, WP-104); a file in content/legal/ with any other block is refused. */
+const PKDE_PAGES_LEGAL_BLOCKS = ['core/heading', 'core/paragraph', 'core/list', 'core/list-item', 'core/table', 'core/quote', 'core/details', 'core/separator', 'core/missing'];
+
+/**
+ * The names of the blocks in a parsed tree that are not in the allowed list, each once, in the order met (the empty-name freeform filler between blocks is not a block).
+ *
+ * @param  list<array<string, mixed>>  $blocks
+ * @param  list<string>  $allowed
+ * @return list<string>
+ */
+function pkde_pages_disallowed_blocks(array $blocks, array $allowed): array
+{
+    $found = [];
+
+    foreach ($blocks as $block) {
+        $name = $block['blockName'] ?? null;
+
+        if (is_string($name) && $name !== '' && ! in_array($name, $allowed, true) && ! in_array($name, $found, true)) {
+            $found[] = $name;
+        }
+
+        foreach (pkde_pages_disallowed_blocks((array) ($block['innerBlocks'] ?? []), $allowed) as $inner) {
+            if (! in_array($inner, $found, true)) {
+                $found[] = $inner;
+            }
+        }
+    }
+
+    return $found;
+}
