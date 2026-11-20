@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026.11.20.6
+
+Two tcs staging findings (TPL-258, TPL-259). **Adopt:** bump `pkde/deploy` on tcs (staging) and bb; every other site in the February train.
+
+- **A manual rollback resets the web PHP behind the staging gate.** The opcache reset, its parallel worker hits, the second probe and the hardening probes now go through `gate_curl`, which sends `STAGING_GATE_AUTH` from `shared/.env` the way the fresh-render check does (as a curl config line on stdin: on no command line and in no URL). tcs's rehearsal printed "WARN: could not request the opcache reset ... 401" at each switch. Shell test `tests/deploy/gate-curl.test.sh` (11 checks with a fake curl).
+- **No script can print credentials.** Audited: no deploy script uses `-u`, `--user`, `%{redirect_url}` or `%{url_effective}`; the test fails if one appears. (The credentials tcs saw came from a hand-run `curl -u ... -w %{redirect_url}`: never print a URL curl built with `-u`.)
+- **`apply-pages.php` resolves `{{faq-group:<slug>}}`** to the id of that FAQ group, so a page file can carry the kit FAQ block in group mode (`<!-- wp:sage/faq {"groups":[{{faq-group:general-questions}}],"order":"manual"} /-->`) and the order apply-pages then faq-migrate is not needed. The group must exist (a missing one is a PROBLEM line; nothing is created). Real WordPress on the template stack: plan, apply (the page carried group id 61, the FAQ showed on the page), a second plan matched, a missing group was reported. Pest 156, shell test 11 for the gate helper.
+
 ## 2026.11.20.5
 
 `legal-migrate.php` and the legal drift rows (WP-104, TPL-255). **Adopt:** with platform 2026.11.20.3 and kit 2026.11.20.6: bb (a shop, staging pilot) and cs (after its December release); every other site through a later manager brief. Not Train-ready.
