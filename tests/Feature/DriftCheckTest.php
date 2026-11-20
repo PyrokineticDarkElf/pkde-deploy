@@ -928,3 +928,17 @@ it('checks the FAQs post type (WP-102): no public URL or sitemap entry, who mana
     unset($facts['faq']);
     expect(pkdeStatuses($facts))->not->toHaveKey('FAQs post type');
 });
+
+it('says which motion mode the site runs (WP-103), INFO only', function () {
+    $facts = pkdeGoodFacts();
+    $facts['motion'] = 'reduced';
+    $statuses = pkdeStatuses($facts);
+
+    expect($statuses['Motion (pkde_kit/motion)'])->toBe('INFO');
+
+    $facts['motion'] = null;
+    expect(pkdeStatuses($facts)['Motion (pkde_kit/motion)'])->toBe('INFO');
+
+    unset($facts['motion']);
+    expect(pkdeStatuses($facts))->not->toHaveKey('Motion (pkde_kit/motion)');
+});
