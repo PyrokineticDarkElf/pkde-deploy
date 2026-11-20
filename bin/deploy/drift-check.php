@@ -243,7 +243,7 @@ function pkde_drift_editor_catalog_facts(): array
         return $facts;
     }
 
-    $names = array_keys(\WP_Block_Patterns_Registry::get_instance()->get_all_registered());
+    $names = array_column(\WP_Block_Patterns_Registry::get_instance()->get_all_registered(), 'name');
     $facts['bundled_patterns'] = count(App\MuPlugins\editor_patterns_to_remove($names));
 
     $types = class_exists('WP_Block_Type_Registry') ? array_filter(\WP_Block_Type_Registry::get_instance()->get_all_registered(), fn($type, $name) => str_starts_with((string) $name, 'rank-math/'), ARRAY_FILTER_USE_BOTH) : [];
