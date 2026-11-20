@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026.11.20.1
+
+Drift rows for the block editor (WP-100, TPL-209, TPL-219, TPL-220, TPL-221). **Adopt:** bump `pkde/deploy`: bb now (staging pilot); every other site the February train.
+
+- **Block editor by role** (needs the platform `editor-settings` module): custom colours, locking and the block list are Administrator-only.
+- **No bundled patterns, Rank Math blocks hidden:** FAIL when WordPress's or WooCommerce's patterns are registered or a Rank Math block is still insertable (the Rank Math row only when its blocks are registered).
+- **A used global block has its declaration:** FAIL when published pages carry the CTA band and `config/pkde-sections.php` declares no content for it.
+- Pest 123.
+
 ## 2026.11.20
 
 Two items (WP-99): the Rank Math titles part on its own (B) and the Relevanssi settings script moved here from the kit (D). **Adopt:** bump `pkde/deploy` and the workflow tags (January train); then every site runs the Rank Math titles part (below).
