@@ -76,18 +76,149 @@ function pkde_faq_heading_text(array $block): ?string
     return ($block['blockName'] ?? '') === 'core/heading' ? pkde_faq_text((string) ($block['attrs']['content'] ?? $block['innerHTML'] ?? '')) : null;
 }
 
+/** Non-blank leaf blocks under (and including) a block. */
+function pkde_faq_leaf_count(array $block): int
+{
+    if (empty($block['innerBlocks'])) {
+        return pkde_faq_is_blank($block) ? 0 : 1;
+    }
+
+    return array_sum(array_map('pkde_faq_leaf_count', $block['innerBlocks']));
+}
+
+/**
+ * The search for a FAQ heading in a Section (or top-level Group): the path (child positions from the scope's inner blocks) of the FIRST heading that matches, in document
+ * order, at any depth, not inside a Details block or a FAQ block; and the path of the topmost wrapper Group of it that holds nothing else (null when the heading is a direct
+ * child of the scope or its wrappers hold other blocks). Null when the scope has no such heading.
+ *
+ * @return ?\ArrayObject {text, heading: ?list<int>, wrapper: ?list<int>, seen: bool, used: bool}
+ */
+function pkde_faq_scope(array $blocks): ?\ArrayObject
+{
+    $find = function (array $list, array $path) use (&$find): ?array {
+        foreach ($list as $i => $block) {
+            $here = [...$path, $i];
+
+            if (($block['blockName'] ?? '') === 'core/details' || pkde_faq_kind($block) !== null) {
+                continue;
+            }
+
+            $text = pkde_faq_heading_text($block);
+
+            if ($text !== null && pkde_faq_heading_matches($text)) {
+                return [$here, $text];
+            }
+
+            if (! empty($block['innerBlocks']) && ($found = $find($block['innerBlocks'], $here)) !== null) {
+                return $found;
+            }
+        }
+
+        return null;
+    };
+
+    $found = $find($blocks, []);
+
+    if ($found === null) {
+        return null;
+    }
+
+    [$heading, $text] = $found;
+    $wrapper = null;
+
+    for ($length = 1; $length < count($heading); $length++) {
+        $node = ['innerBlocks' => $blocks];
+
+        foreach (array_slice($heading, 0, $length) as $step) {
+            $node = $node['innerBlocks'][$step];
+        }
+
+        if (pkde_faq_leaf_count($node) === 1) {
+            $wrapper = array_slice($heading, 0, $length);
+            break;
+        }
+    }
+
+    return new \ArrayObject(['text' => $text, 'heading' => $heading, 'wrapper' => $wrapper, 'seen' => false, 'used' => false]);
+}
+
+/**
+ * Makes a container block's `innerContent` agree with its inner blocks after blocks were replaced or removed in it. serialize_blocks() places one inner block at every `null`
+ * of innerContent, so a Group that lost or gained a block must have as many `null` chunks as inner blocks (the opening markup, one `null` per block with a newline between,
+ * the closing markup). A block whose count already agrees is returned as it is.
+ */
+function pkde_faq_sync_inner_content(array $block): array
+{
+    $content = (array) ($block['innerContent'] ?? []);
+    $slots = count(array_filter($content, fn($chunk) => $chunk === null));
+    $count = count((array) ($block['innerBlocks'] ?? []));
+
+    if ($slots === $count || $content === []) {
+        return $block;
+    }
+
+    $first = array_search(null, $content, true);
+    $last = array_key_last(array_filter($content, fn($chunk) => $chunk === null));
+    $opening = implode('', array_slice($content, 0, $first === false ? count($content) : $first));
+    $closing = $last === null ? '' : implode('', array_slice($content, $last + 1));
+    $rebuilt = [$opening];
+
+    for ($n = 0; $n < $count; $n++) {
+        $rebuilt[] = null;
+
+        if ($n < $count - 1) {
+            $rebuilt[] = "\n";
+        }
+    }
+
+    $rebuilt[] = $closing;
+    $block['innerContent'] = $rebuilt;
+
+    return $block;
+}
+
+/** Ends a scope: the wrapper Group that held only the heading is dropped when a FAQ block took the heading, and the marker is removed either way. */
+function pkde_faq_finish_scope(array $blocks, bool $used): array
+{
+    $out = [];
+
+    foreach ($blocks as $block) {
+        if (! empty($block['attrs']['pkdeScopeWrapper'])) {
+            if ($used) {
+                continue;
+            }
+
+            unset($block['attrs']['pkdeScopeWrapper']);
+        }
+
+        if (! empty($block['innerBlocks'])) {
+            $block['innerBlocks'] = pkde_faq_finish_scope($block['innerBlocks'], $used);
+            $block = pkde_faq_sync_inner_content($block);
+        }
+
+        $out[] = $block;
+    }
+
+    return $out;
+}
+
 /**
  * Walk parsed blocks in document order. `$visit($block, $kind, $index)` is called for each FAQ block (the index counts them per page, from 0) and returns null to keep it or a
  * replacement block. The inside of a FAQ block is not walked (its items are its questions).
  *
  * A run of one or more consecutive core Details blocks is one FAQ block (kind `details`, a virtual block whose inner blocks are the Details blocks) when a heading that matches
  * pkde_faq_heading_matches() comes directly before it (the heading is then the FAQ block's heading and the replacement takes its place), or when the Group or Section it
- * sits in has such a heading (the heading stays where it is). Details blocks anywhere else are not touched; `$loose` counts those runs.
+ * sits in has such a heading (the heading stays where it is), or, failing both, when a matching heading appears ANYWHERE inside the nearest enclosing Section (or the
+ * top-level Group when there is no Section), at any depth and before the run in document order, not inside a Details block (tcs and el: the heading is in a sibling Group
+ * of the one that holds the Details). The first such heading is used. It stays where it is and the FAQ block prints none; only when the wrapper Group it sits in holds
+ * nothing else is that wrapper removed and the heading becomes the FAQ block's heading. Details blocks anywhere else are not touched; `$loose` counts those runs.
  *
  * @param  string  $containerHeading  the matching heading of the Group or Section the blocks are in, '' if none
+ * @param  ?\ArrayObject  $scope  the nearest Section's (or top-level Group's) heading search, see pkde_faq_scope()
+ * @param  list<int>  $path  the position of $blocks inside the scope, to find the scope's heading again
  * @return array the (possibly changed) blocks
  */
-function pkde_faq_walk(array $blocks, callable $visit, int &$index = 0, string $containerHeading = '', ?\ArrayObject $loose = null): array
+function pkde_faq_walk(array $blocks, callable $visit, int &$index = 0, string $containerHeading = '', ?\ArrayObject $loose = null, ?\ArrayObject $scope = null, array $path = [], int $depth = 0): array
 {
     $out = [];
     $count = count($blocks);
@@ -128,6 +259,14 @@ function pkde_faq_walk(array $blocks, callable $visit, int &$index = 0, string $
             $text = $previous !== null ? pkde_faq_heading_text($out[$previous]) : null;
             $immediate = $text !== null && pkde_faq_heading_matches($text);
             $heading = $immediate ? $text : $containerHeading;
+            $viaScope = false;
+
+            if ($heading === '' && $scope !== null && $scope['seen'] && $scope['text'] !== '') {
+                $heading = $scope['text'];
+                $viaScope = true;
+            }
+
+            $consumes = $immediate || ($viaScope && ! $scope['used'] && $scope['wrapper'] !== null);
 
             if ($heading === '') {
                 $loose?->offsetSet('loose', $loose['loose'] + 1);
@@ -139,12 +278,15 @@ function pkde_faq_walk(array $blocks, callable $visit, int &$index = 0, string $
                 continue;
             }
 
-            $virtual = ['blockName' => 'pkde/details-run', 'attrs' => ['heading' => $heading, 'consumesHeading' => $immediate], 'innerBlocks' => $details, 'innerHTML' => '', 'innerContent' => []];
+            $virtual = ['blockName' => 'pkde/details-run', 'attrs' => ['heading' => $heading, 'consumesHeading' => $consumes], 'innerBlocks' => $details, 'innerHTML' => '', 'innerContent' => []];
             $replacement = $visit($virtual, PKDE_FAQ_KIND_DETAILS, $index++);
 
             if ($replacement !== null) {
                 if ($immediate) {
                     array_splice($out, $previous, 1); // the heading becomes the FAQ block's heading
+                }
+                if ($viaScope && $consumes) {
+                    $scope['used'] = true; // the wrapper Group that held only the heading is removed when the scope is finished
                 }
                 $out[] = $replacement;
             } else {
@@ -157,8 +299,24 @@ function pkde_faq_walk(array $blocks, callable $visit, int &$index = 0, string $
             continue;
         }
 
+        if ($scope !== null && $scope['heading'] !== null && [...$path, $i] === $scope['heading']) {
+            $scope['seen'] = true;
+        }
+
         if (! empty($block['innerBlocks'])) {
             $inside = '';
+            $childScope = $scope;
+            $childPath = [...$path, $i];
+            $ownScope = ($block['blockName'] ?? '') === 'sage/section' || (($block['blockName'] ?? '') === 'core/group' && $depth === 0 && $scope === null);
+
+            if ($scope !== null && $scope['wrapper'] !== null && $childPath === $scope['wrapper']) {
+                $block['attrs']['pkdeScopeWrapper'] = true;
+            }
+
+            if ($ownScope) {
+                $childScope = pkde_faq_scope($block['innerBlocks']);
+                $childPath = [];
+            }
 
             if (in_array($block['blockName'] ?? '', ['core/group', 'sage/section'], true)) {
                 foreach ($block['innerBlocks'] as $child) {
@@ -171,7 +329,13 @@ function pkde_faq_walk(array $blocks, callable $visit, int &$index = 0, string $
                 }
             }
 
-            $block['innerBlocks'] = pkde_faq_walk($block['innerBlocks'], $visit, $index, $inside, $loose);
+            $block['innerBlocks'] = pkde_faq_walk($block['innerBlocks'], $visit, $index, $inside, $loose, $childScope, $childPath, $depth + 1);
+
+            if ($ownScope && $childScope !== null) {
+                $block['innerBlocks'] = pkde_faq_finish_scope($block['innerBlocks'], (bool) $childScope['used']);
+            }
+
+            $block = pkde_faq_sync_inner_content($block);
         }
 
         $out[] = $block;

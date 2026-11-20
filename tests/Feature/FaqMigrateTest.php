@@ -224,3 +224,139 @@ it('says in the script how details, synced patterns and loose Details are handle
 
     expect($source)->toContain('PKDE_FAQ_KIND_DETAILS', "'wp_block'", 'used by:', 'CHECK BY HAND', 'pkde_faq_loose_details', "post_content LIKE '%wp:details%'", 'consumesHeading');
 });
+
+/** TPL-252: a FAQ heading anywhere in the nearest Section (or top-level Group) heads a Details run that has no heading of its own. */
+$pkdeGroup = fn(array $inner, array $attrs = []) => ['blockName' => 'core/group', 'attrs' => $attrs, 'innerBlocks' => $inner, 'innerHTML' => '', 'innerContent' => []];
+$pkdePara = fn(string $t) => ['blockName' => 'core/paragraph', 'attrs' => [], 'innerBlocks' => [], 'innerHTML' => "<p>$t</p>"];
+$pkdeFaq = ['blockName' => 'sage/faq', 'attrs' => ['groups' => [1]], 'innerBlocks' => [], 'innerHTML' => '', 'innerContent' => []];
+
+it('el: a heading in a SIBLING Group of the same Section heads the Details run; the heading group keeps its intro and stays', function () use ($pkdeGroup, $pkdePara, $pkdeFaq) {
+    $details = array_map(fn($n) => pkdeDetails("Question $n?", "Answer $n."), range(1, 10));
+    $blocks = [['blockName' => 'sage/section', 'attrs' => [], 'innerHTML' => '', 'innerContent' => [], 'innerBlocks' => [
+        $pkdeGroup([pkdeHeading('Frequently Asked Questions'), $pkdePara('Straight answers.')]),
+        $pkdeGroup($details),
+    ]]];
+
+    $seen = null;
+    $new = pkde_faq_walk($blocks, function ($block) use (&$seen, $pkdeFaq) {
+        $seen = $block['attrs'];
+
+        return $pkdeFaq;
+    });
+
+    // one run, the heading does not move (the wrapper holds an intro paragraph too), so the block prints none
+    expect($seen)->toBe(['heading' => 'Frequently Asked Questions', 'consumesHeading' => false])
+        ->and($new[0]['innerBlocks'][0]['innerBlocks'])->toHaveCount(2)
+        ->and(array_column($new[0]['innerBlocks'][1]['innerBlocks'], 'blockName'))->toBe(['sage/faq'])
+        ->and(pkde_faq_loose_details($blocks))->toBe(0);
+});
+
+it('tcs: a heading two levels down in an intro Group beside the questions Group heads the run; the intro stays because it holds more than the heading', function () use ($pkdeGroup, $pkdePara, $pkdeFaq) {
+    $blocks = [['blockName' => 'sage/section', 'attrs' => [], 'innerHTML' => '', 'innerContent' => [], 'innerBlocks' => [
+        $pkdeGroup([
+            $pkdeGroup([$pkdeGroup([pkdeHeading('F.A.Q.'), pkdeHeading('General Questions')], ['layout' => ['type' => 'flex']]), $pkdePara('Ask away.')]),
+            $pkdeGroup(array_map(fn($n) => pkdeDetails("Question $n?", "Answer $n."), range(1, 5))),
+        ], ['layout' => ['type' => 'grid']]),
+    ]]];
+
+    $seen = [];
+    $new = pkde_faq_walk($blocks, function ($block) use (&$seen, $pkdeFaq) {
+        $seen[] = $block['attrs'];
+
+        return $pkdeFaq;
+    });
+    $grid = $new[0]['innerBlocks'][0]['innerBlocks'];
+
+    expect($seen)->toBe([['heading' => 'F.A.Q.', 'consumesHeading' => false]]) // the FIRST matching heading; "General Questions" is not used
+        ->and($grid[0]['innerBlocks'][0]['innerBlocks'])->toHaveCount(2) // both headings still there
+        ->and(array_column($grid[1]['innerBlocks'], 'blockName'))->toBe(['sage/faq'])
+        ->and(json_encode($new))->not->toContain('pkdeScopeWrapper');
+});
+
+it('removes the wrapper Group of the heading only when it held nothing else, and the FAQ block takes the heading', function () use ($pkdeGroup, $pkdeFaq) {
+    $blocks = [['blockName' => 'sage/section', 'attrs' => [], 'innerHTML' => '', 'innerContent' => [], 'innerBlocks' => [
+        $pkdeGroup([$pkdeGroup([pkdeHeading('Questions')])]),
+        $pkdeGroup([pkdeDetails('One?', 'a'), pkdeDetails('Two?', 'b')]),
+    ]]];
+
+    $seen = null;
+    $new = pkde_faq_walk($blocks, function ($block) use (&$seen, $pkdeFaq) {
+        $seen = $block['attrs'];
+
+        return $pkdeFaq;
+    });
+
+    expect($seen)->toBe(['heading' => 'Questions', 'consumesHeading' => true])
+        ->and($new[0]['innerBlocks'])->toHaveCount(1) // the wrapper with only the heading is gone
+        ->and($new[0]['innerBlocks'][0]['innerBlocks'][0]['blockName'])->toBe('sage/faq');
+
+    // a plan (nothing replaced) leaves every block, markers included, untouched
+    expect(pkde_faq_walk($blocks, fn() => null))->toBe($blocks);
+});
+
+it('does not use a heading that comes AFTER the run, one inside a Details block, or one outside the Section; a nearer heading wins', function () use ($pkdeGroup, $pkdePara, $pkdeFaq) {
+    $after = [['blockName' => 'sage/section', 'attrs' => [], 'innerHTML' => '', 'innerContent' => [], 'innerBlocks' => [
+        $pkdeGroup([pkdeDetails('One?', 'a')]),
+        $pkdeGroup([pkdeHeading('FAQ')]),
+    ]]];
+    $outside = [pkdeHeading('FAQ'), ['blockName' => 'sage/section', 'attrs' => [], 'innerHTML' => '', 'innerContent' => [], 'innerBlocks' => [$pkdeGroup([pkdeDetails('One?', 'a')])]]];
+    $insideDetails = pkdeDetails('One?', 'a');
+    $insideDetails['innerBlocks'][] = pkdeHeading('More questions');
+    $inDetails = [['blockName' => 'sage/section', 'attrs' => [], 'innerHTML' => '', 'innerContent' => [], 'innerBlocks' => [$pkdeGroup([$insideDetails])]]];
+
+    foreach ([$after, $outside, $inDetails] as $blocks) {
+        $visited = false;
+        pkde_faq_walk($blocks, function () use (&$visited) {
+            $visited = true;
+
+            return null;
+        });
+        expect($visited)->toBeFalse()->and(pkde_faq_loose_details($blocks))->toBe(1);
+    }
+
+    // a heading directly in front of the run beats the Section's first one
+    $near = [['blockName' => 'sage/section', 'attrs' => [], 'innerHTML' => '', 'innerContent' => [], 'innerBlocks' => [
+        $pkdeGroup([pkdeHeading('Frequently asked questions')]),
+        $pkdeGroup([pkdeHeading('Delivery questions'), pkdeDetails('One?', 'a')]),
+    ]]];
+    $seen = null;
+    pkde_faq_walk($near, function ($block) use (&$seen, $pkdeFaq) {
+        $seen = $block['attrs'];
+
+        return $pkdeFaq;
+    });
+    expect($seen)->toBe(['heading' => 'Delivery questions', 'consumesHeading' => true]);
+});
+
+it('uses the top-level Group as the scope when there is no Section', function () use ($pkdeGroup, $pkdeFaq) {
+    $blocks = [$pkdeGroup([$pkdeGroup([pkdeHeading('F.A.Q.'), pkdeHeading('x')]), $pkdeGroup([pkdeDetails('One?', 'a')])])];
+    $seen = null;
+    pkde_faq_walk($blocks, function ($block) use (&$seen, $pkdeFaq) {
+        $seen = $block['attrs'];
+
+        return $pkdeFaq;
+    });
+
+    expect($seen['heading'])->toBe('F.A.Q.');
+});
+
+it('keeps a Group serialisable when a run of Details inside it becomes one block (innerContent gets one slot per inner block)', function () use ($pkdeFaq) {
+    $group = ['blockName' => 'core/group', 'attrs' => [], 'innerHTML' => '', 'innerBlocks' => [pkdeHeading('FAQ'), pkdeDetails('One?', 'a'), pkdeDetails('Two?', 'b')],
+        'innerContent' => ["\n<div class=\"wp-block-group\">", null, "\n", null, "\n", null, "</div>\n"]];
+
+    $new = pkde_faq_walk([$group], fn() => $pkdeFaq);
+
+    expect($new[0]['innerBlocks'])->toHaveCount(1) // the heading and both Details became the one block
+        ->and($new[0]['innerContent'])->toBe(["\n<div class=\"wp-block-group\">", null, "</div>\n"])
+        ->and(count(array_filter($new[0]['innerContent'], fn($c) => $c === null)))->toBe(count($new[0]['innerBlocks']));
+
+    // the section whose wrapper Group is removed keeps one slot per remaining block
+    $section = ['blockName' => 'sage/section', 'attrs' => [], 'innerHTML' => '', 'innerBlocks' => [
+        ['blockName' => 'core/group', 'attrs' => [], 'innerHTML' => '', 'innerContent' => ['<div>', null, '</div>'], 'innerBlocks' => [pkdeHeading('Questions')]],
+        ['blockName' => 'core/group', 'attrs' => [], 'innerHTML' => '', 'innerContent' => ['<div>', null, "\n", null, '</div>'], 'innerBlocks' => [pkdeDetails('One?', 'a'), pkdeDetails('Two?', 'b')]],
+    ], 'innerContent' => ['<section>', null, "\n", null, '</section>']];
+    $new = pkde_faq_walk([$section], fn() => $pkdeFaq);
+
+    expect($new[0]['innerBlocks'])->toHaveCount(1)->and($new[0]['innerContent'])->toBe(['<section>', null, '</section>'])
+        ->and($new[0]['innerBlocks'][0]['innerContent'])->toBe(['<div>', null, '</div>']);
+});
