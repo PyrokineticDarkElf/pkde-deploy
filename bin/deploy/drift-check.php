@@ -279,6 +279,52 @@ function pkde_drift_global_blocks_facts(): array
 }
 
 /**
+ * The legal documents (WP-104, platform module legal): what is published by type, the two settings that may point at a document, the documents with no effective date,
+ * and any address a Page and a document share. Null when the post type is not registered (an older platform, or the module is switched off).
+ */
+function pkde_drift_legal_facts(): ?array
+{
+    global $wpdb;
+
+    if (! function_exists('post_type_exists') || ! post_type_exists('pkde_legal') || ! isset($wpdb)) {
+        return null;
+    }
+
+    $docs = get_posts(['post_type' => 'pkde_legal', 'post_status' => 'publish', 'numberposts' => -1, 'suppress_filters' => true]);
+    $types = [];
+    $noDate = [];
+
+    foreach ($docs as $doc) {
+        $types[(string) get_post_meta($doc->ID, '_pkde_legal_type', true) ?: 'other'][] = $doc->post_name;
+
+        if ((string) get_post_meta($doc->ID, '_pkde_legal_effective', true) === '') {
+            $noDate[] = $doc->post_name;
+        }
+    }
+
+    $points = function (string $option): ?string {
+        $id = (int) get_option($option);
+
+        if ($id === 0) {
+            return 'unset';
+        }
+
+        $post = get_post($id);
+
+        return $post && $post->post_type === 'pkde_legal' && $post->post_status === 'publish' ? 'document' : 'other';
+    };
+    $clashes = $wpdb->get_col("SELECT d.post_name FROM {$wpdb->posts} d JOIN {$wpdb->posts} p ON p.post_name = d.post_name AND p.post_type = 'page' AND p.post_status = 'publish' WHERE d.post_type = 'pkde_legal' AND d.post_status = 'publish'");
+
+    return [
+        'types' => array_map('count', $types),
+        'no_date' => $noDate,
+        'privacy_setting' => $points('wp_page_for_privacy_policy'),
+        'terms_setting' => $points('woocommerce_terms_page_id'),
+        'clashes' => array_values(array_unique($clashes)),
+    ];
+}
+
+/**
  * The FAQs post type (WP-102, platform module faq): that it has no public URL, archive or sitemap entry, who may manage it, the FAQ blocks still typed by hand, and the
  * groups with no FAQ. Null when the post type is not registered (an older platform, or the module is switched off).
  *
@@ -701,6 +747,28 @@ function pkde_drift_evaluate(array $f): array
         }
     }
 
+    // Legal documents (WP-104): Privacy and Cookies published on every site, Terms and Returns on a shop, the core privacy setting and the WooCommerce terms setting pointing at a
+    // published document, an effective date on each, no address shared with a Page. Only when the facts carry the key.
+    if (array_key_exists('legal', $f)) {
+        $l = $f['legal'];
+        if (! is_array($l)) {
+            $add('INFO', 'Legal documents', 'the platform legal module is not loaded (an older platform release, or PKDE_PLATFORM_DISABLE names it)');
+        } else {
+            $has = fn(string $type) => ! empty($l['types'][$type]);
+            $shop = ! empty($f['woocommerce_active']);
+            $cmp('Legal: a Privacy document is published', $has('privacy'), 'no published legal document of type privacy (bin/deploy/legal-migrate.php plan)');
+            $cmp('Legal: a Cookies document is published', $has('cookies'), 'no published legal document of type cookies');
+            if ($shop) {
+                $cmp('Legal: a Terms document is published', $has('terms'), 'no published legal document of type terms (a shop needs one)');
+                $cmp('Legal: a Returns document is published', $has('returns'), 'no published legal document of type returns (a shop needs one)');
+                $cmp('Legal: the WooCommerce terms setting points at a published document', ($l['terms_setting'] ?? '') === 'document', 'woocommerce_terms_page_id is ' . ($l['terms_setting'] ?? 'unset') . ' (WooCommerce > Settings > Advanced > Terms and conditions)');
+            }
+            $cmp('Legal: the core privacy setting points at a published document', ($l['privacy_setting'] ?? '') === 'document', 'wp_page_for_privacy_policy is ' . ($l['privacy_setting'] ?? 'unset') . ' (Settings > Privacy)');
+            $cmp('Legal: every document has an effective date', empty($l['no_date']), 'no effective date: ' . implode(', ', (array) ($l['no_date'] ?? [])));
+            $cmp('Legal: no document shares its address with a Page', empty($l['clashes']), 'shared with a Page (the Page wins): ' . implode(', ', (array) ($l['clashes'] ?? [])));
+        }
+    }
+
     // Global blocks (tier 3): a block used on published pages needs its declaration (config/pkde-sections.php), or it prints nothing.
     foreach ((array) ($f['global_blocks'] ?? []) as $name => $g) {
         if ((int) ($g['pages'] ?? 0) > 0) {
@@ -1079,6 +1147,7 @@ function pkde_drift_collect(): array
         'editor_catalog' => pkde_drift_editor_catalog_facts(),
         'global_blocks' => pkde_drift_global_blocks_facts(),
         'faq' => pkde_drift_faq_facts(),
+        'legal' => pkde_drift_legal_facts(),
         'motion' => function_exists('App\\motion_mode') ? App\motion_mode() : null,
         'turnstile' => [
             'appearance' => get_option('cfturnstile_appearance', 'always'),

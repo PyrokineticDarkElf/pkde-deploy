@@ -40,6 +40,7 @@ echo '<!-- wp:paragraph --><p>x</p><!-- /wp:paragraph -->' > "$site/content/page
 
 (cd "$site" && bash "$REPO_ROOT/bin/deploy/assemble-artifact.sh" dist >/dev/null 2>&1)
 check "content/pages/home.html is in the artifact" "$([ -f "$site/dist/content/pages/home.html" ] && echo yes || echo no)" yes
+check "legal-migrate.php ships with its library" "$(ls "$site/dist/bin/deploy/legal-migrate.php" "$site/dist/bin/deploy/legal-migrate-lib.php" 2>/dev/null | wc -l | tr -d ' ')" 2
 check "apply-pages.php and faq-migrate.php ship with their libraries" "$(ls "$site/dist/bin/deploy/apply-pages.php" "$site/dist/bin/deploy/apply-pages-lib.php" "$site/dist/bin/deploy/faq-migrate.php" "$site/dist/bin/deploy/faq-migrate-lib.php" 2>/dev/null | wc -l | tr -d ' ')" 4
 check "wordfence lib/.htaccess is in the artifact" "$([ -f "$site/dist/web/app/plugins/wordfence/lib/.htaccess" ] && echo yes || echo no)" yes
 check "w3tc pub/.htaccess is in the artifact" "$([ -f "$site/dist/web/app/plugins/w3-total-cache/pub/.htaccess" ] && echo yes || echo no)" yes
