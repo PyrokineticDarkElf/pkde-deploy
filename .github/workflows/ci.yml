@@ -43,6 +43,7 @@ jobs:
       - name: Test the deploy tools
         run: |
           bash tests/deploy/activate-release.test.sh
+          bash tests/deploy/gate-curl.test.sh
           bash tests/deploy/rcpt-probe.test.sh
           bash tests/deploy/safe-push-main.test.sh
           bash tests/deploy/retry.test.sh
