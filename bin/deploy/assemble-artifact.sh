@@ -68,11 +68,16 @@ rm -f "$DEST/web/wp/readme.html" "$DEST/web/wp/license.txt"
 # activate-release.sh seeds the server's shared .htaccess from it once.
 rsync -a vendor/ "$DEST/vendor/"
 rsync -a config/ "$DEST/config/"
+# A site's repeatable content (content/pages/<slug>.html, and any content script of its own): shipped with the release, next to config/, so the same files can be
+# applied on staging and again at the cutover (bin/deploy/apply-pages.php). Outside the docroot, so not web-reachable.
+if [ -d content ]; then
+    rsync -a content/ "$DEST/content/"
+fi
 cp composer.json composer.lock wp-cli.yml "$DEST/"
 
 # The server-side checks the launch guide runs from the release (`wp eval-file bin/deploy/...`, `bash bin/deploy/perf-probe.sh`): no secrets, and outside the docroot
 # (web/), so they are not web-reachable. Only these files, not the rest of bin/deploy (CI-side scripts).
 mkdir -p "$DEST/bin/deploy"
-cp "$TOOLS_DIR/drift-check.php" "$TOOLS_DIR/w3tc-standard.php" "$TOOLS_DIR/w3tc-settings.php" "$TOOLS_DIR/alert-email.php" "$TOOLS_DIR/wordfence-standard.php" "$TOOLS_DIR/wfconfig-sql.php" "$TOOLS_DIR/waf-prepend.sh" "$TOOLS_DIR/perf-probe.php" "$TOOLS_DIR/perf-probe.sh" "$TOOLS_DIR/seo-sitemap-exclusions.php" "$TOOLS_DIR/rankmath-standard.php" "$TOOLS_DIR/rankmath-baseline.php" "$TOOLS_DIR/relevanssi-settings.php" "$TOOLS_DIR/cf7-form-key-standard.php" "$TOOLS_DIR/cf7-form-key.php" "$TOOLS_DIR/wp.sh" "$DEST/bin/deploy/"
+cp "$TOOLS_DIR/drift-check.php" "$TOOLS_DIR/w3tc-standard.php" "$TOOLS_DIR/w3tc-settings.php" "$TOOLS_DIR/alert-email.php" "$TOOLS_DIR/wordfence-standard.php" "$TOOLS_DIR/wfconfig-sql.php" "$TOOLS_DIR/waf-prepend.sh" "$TOOLS_DIR/perf-probe.php" "$TOOLS_DIR/perf-probe.sh" "$TOOLS_DIR/seo-sitemap-exclusions.php" "$TOOLS_DIR/rankmath-standard.php" "$TOOLS_DIR/rankmath-baseline.php" "$TOOLS_DIR/relevanssi-settings.php" "$TOOLS_DIR/cf7-form-key-standard.php" "$TOOLS_DIR/cf7-form-key.php" "$TOOLS_DIR/faq-migrate.php" "$TOOLS_DIR/faq-migrate-lib.php" "$TOOLS_DIR/apply-pages.php" "$TOOLS_DIR/apply-pages-lib.php" "$TOOLS_DIR/wp.sh" "$DEST/bin/deploy/"
 
 echo "Assembled deploy artifact in $DEST"
