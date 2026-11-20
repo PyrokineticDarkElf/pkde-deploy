@@ -206,6 +206,30 @@ function pkde_drift_breadcrumb_facts(): array
 }
 
 /**
+ * What the platform's editor-settings module (WP-100) does for someone who is not an Administrator, asked of the real filters. A WP-CLI run has no
+ * user, which is exactly the "not an Administrator" case. Null when the module is not loaded (an older platform release, or switched off).
+ *
+ * @return array{can_lock: bool, custom_colors: bool, remote_patterns: bool, blocks_limited: bool, shortcode: bool}|null
+ */
+function pkde_drift_editor_settings_facts(): ?array
+{
+    if (! function_exists('App\\MuPlugins\\editor_settings_state')) {
+        return null;
+    }
+
+    $settings = (array) apply_filters('block_editor_settings_all', ['canLockBlocks' => true, '__experimentalFeatures' => ['color' => ['custom' => true]]], null);
+    $allowed = apply_filters('allowed_block_types_all', true, (object) ['name' => 'core/edit-post']);
+
+    return [
+        'can_lock' => ! empty($settings['canLockBlocks']),
+        'custom_colors' => ! empty($settings['__experimentalFeatures']['color']['custom']),
+        'remote_patterns' => (bool) apply_filters('should_load_remote_block_patterns', true),
+        'blocks_limited' => is_array($allowed),
+        'shortcode' => is_array($allowed) && in_array('core/shortcode', $allowed, true),
+    ];
+}
+
+/**
  * Pure comparison of collected facts with the standard.
  *
  * @param  array<string,mixed>  $f  facts from pkde_drift_collect()
@@ -527,6 +551,20 @@ function pkde_drift_evaluate(array $f): array
             $listed[] = $differ === 0 ? "$path (identical to the kit: delete it)" : ($differ < 0 ? "$path (the kit has no such view any more)" : "$path ($differ lines differ from the kit's)");
         }
         $add('INFO', 'Kit view overrides', count($listed) . ': ' . implode('; ', $listed));
+    }
+
+    // The block editor by role (WP-100, platform module editor-settings): what a non-Administrator is offered. Only when the facts carry the key
+    // (an older drift run does not); a platform without the module is an INFO row, not a failure.
+    if (array_key_exists('editor_settings', $f)) {
+        $e = $f['editor_settings'];
+        if (! is_array($e)) {
+            $add('INFO', 'Block editor settings by role', 'the platform editor-settings module is not loaded (an older platform release, or PKDE_PLATFORM_DISABLE names it)');
+        } else {
+            $cmp('Block editor: an Editor cannot lock or unlock blocks', empty($e['can_lock']), 'canLockBlocks is on for a user who is not an Administrator');
+            $cmp('Block editor: custom colours and gradients are for Administrators only', empty($e['custom_colors']), 'the full colour picker is on for a user who is not an Administrator');
+            $cmp('Block editor: remote block patterns are off', empty($e['remote_patterns']), "core's pattern directory is still loaded");
+            $cmp('Block editor: an Editor gets the curated block list (no shortcode block)', ! empty($e['blocks_limited']) && empty($e['shortcode']), 'the block list is not limited, or the shortcode block is offered to an Editor');
+        }
     }
 
     // Form lookup keys (TPL-186): INFO for which forms carry one; FAIL only when a theme file asks App\form_id('x') and no form has that key; INFO for a title lookup left over.
@@ -882,6 +920,7 @@ function pkde_drift_collect(): array
         'kit_cache_safe' => function_exists('App\\no_page_cache'),
         'personal_views' => pkde_drift_personal_views(get_template_directory() . '/resources/views'),
         'kit_overrides' => pkde_drift_kit_overrides(get_template_directory()),
+        'editor_settings' => pkde_drift_editor_settings_facts(),
         'turnstile' => [
             'appearance' => get_option('cfturnstile_appearance', 'always'),
             'login' => get_option('cfturnstile_login'),

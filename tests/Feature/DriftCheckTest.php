@@ -844,3 +844,31 @@ it('lists kit view overrides with how far they are from the kit\'s view, INFO on
 
     exec('rm -rf ' . escapeshellarg($theme));
 });
+
+it('judges the block editor by role from the platform module (WP-100): PASS when an Editor is limited, FAIL when not, INFO when the module is absent', function () {
+    $facts = pkdeGoodFacts();
+
+    // module loaded and right
+    $facts['editor_settings'] = ['can_lock' => false, 'custom_colors' => false, 'remote_patterns' => false, 'blocks_limited' => true, 'shortcode' => false];
+    $statuses = pkdeStatuses($facts);
+    foreach (['Block editor: an Editor cannot lock or unlock blocks', 'Block editor: custom colours and gradients are for Administrators only', 'Block editor: remote block patterns are off', 'Block editor: an Editor gets the curated block list (no shortcode block)'] as $check) {
+        expect($statuses[$check])->toBe('PASS');
+    }
+
+    // module loaded, and an Editor can unlock, pick any colour and insert shortcodes
+    $facts['editor_settings'] = ['can_lock' => true, 'custom_colors' => true, 'remote_patterns' => true, 'blocks_limited' => false, 'shortcode' => true];
+    $statuses = pkdeStatuses($facts);
+    expect($statuses['Block editor: an Editor cannot lock or unlock blocks'])->toBe('FAIL')
+        ->and($statuses['Block editor: custom colours and gradients are for Administrators only'])->toBe('FAIL')
+        ->and($statuses['Block editor: remote block patterns are off'])->toBe('FAIL')
+        ->and($statuses['Block editor: an Editor gets the curated block list (no shortcode block)'])->toBe('FAIL');
+
+    // an older platform (or the module switched off): one INFO row, no failures
+    $facts['editor_settings'] = null;
+    $statuses = pkdeStatuses($facts);
+    expect($statuses['Block editor settings by role'])->toBe('INFO')->and($statuses)->not->toHaveKey('Block editor: remote block patterns are off');
+
+    // a run that does not carry the fact says nothing
+    unset($facts['editor_settings']);
+    expect(pkdeStatuses($facts))->not->toHaveKey('Block editor settings by role');
+});
