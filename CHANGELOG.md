@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026.11.24.2
+
+An INFO drift row for the global button system (WP-109, TPL-272). **Adopt:** every site with the next deploy workflow tag. Not Train-ready.
+
+- **Drift row:** `Buttons (global button system)` says whether the site declares `buttons` (the three variants and the hover) or draws its buttons from each section's own roles; older kits say they have no system. Never a FAIL.
+
 ## 2026.11.24.1
 
 The rollback probe covers pools of more than 16 PHP workers (TPL-271, tcs) and a drift row shows the shape preset (WP-108 A, TPL-266). **Adopt:** every site with the next deploy workflow tag (bb and tcs now; the others in February). Not Train-ready.

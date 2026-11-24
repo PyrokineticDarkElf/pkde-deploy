@@ -386,6 +386,24 @@ function pkde_drift_legal_facts(): ?array
  *
  * @return array<string, mixed>|null
  */
+/** The declared buttons (resources/generated/buttons.php), false when the site declares none, null for a kit older than the button system. */
+function pkde_drift_buttons_facts(string $themeDir): array|false|null
+{
+    if (! is_file($themeDir . '/resources/generated/shape.php')) {
+        return null; // no shape file either: a kit older than WP-108
+    }
+
+    $file = $themeDir . '/resources/generated/buttons.php';
+
+    if (! is_file($file)) {
+        return false;
+    }
+
+    $buttons = include $file;
+
+    return is_array($buttons) ? $buttons : false;
+}
+
 /** The shape tokens the theme was generated with (resources/generated/shape.php of the kit), or null without that file. */
 function pkde_drift_shape_facts(string $themeDir): ?array
 {
@@ -787,6 +805,16 @@ function pkde_drift_evaluate(array $f): array
         if ($c['rank_math_visible'] !== null) {
             $cmp('Block editor: Rank Math blocks hidden from the inserter', (array) $c['rank_math_visible'] === [], 'still in the inserter: ' . implode(', ', (array) $c['rank_math_visible']));
         }
+    }
+
+    // The global button system (WP-109, `buttons` in config/brand-palette.json): INFO only. Only when the facts carry the key; false is a site that declares none (the roles of each
+    // section and card draw its buttons), null a kit without the system.
+    if (array_key_exists('buttons', $f)) {
+        $b = $f['buttons'];
+        $add('INFO', 'Buttons (global button system)', $b === null
+            ? 'the kit has no global button system yet (an older pkde/sage-kit)'
+            : ($b === false ? 'not declared: each section and card draws its buttons from its own button roles'
+                : 'declared: primary ' . ($b['primary']['style'] ?? '?') . ' ' . ($b['primary']['colour'] ?? '?') . ', secondary ' . ($b['secondary']['style'] ?? '?') . ' ' . ($b['secondary']['colour'] ?? '?') . ', text ' . ($b['text']['style'] ?? '?') . ' ' . ($b['text']['colour'] ?? '?') . '; hover ' . ($b['hover'] ?? '?')));
     }
 
     // The shape (WP-108 A, shape in config/brand-palette.json): INFO only, which preset the site runs and its radii. Only when the facts carry the key; null is a kit without shape tokens.
@@ -1246,6 +1274,7 @@ function pkde_drift_collect(): array
         'site_details' => pkde_drift_site_details_facts(),
         'motion' => function_exists('App\\motion_mode') ? App\motion_mode() : null,
         'shape' => pkde_drift_shape_facts(get_template_directory()),
+        'buttons' => pkde_drift_buttons_facts(get_template_directory()),
         'turnstile' => [
             'appearance' => get_option('cfturnstile_appearance', 'always'),
             'login' => get_option('cfturnstile_login'),

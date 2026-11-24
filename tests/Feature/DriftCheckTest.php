@@ -1013,3 +1013,18 @@ it('says which shape the site runs (WP-108 A), INFO only', function () {
     unset($facts['shape']);
     expect(pkdeStatuses($facts))->not->toHaveKey('Shape (corner radius and border thickness)');
 });
+
+
+it('says whether the site declares the global buttons (WP-109), INFO only', function () {
+    $facts = pkdeGoodFacts();
+    $facts['buttons'] = ['primary' => ['style' => 'text', 'colour' => '#353b3d'], 'secondary' => ['style' => 'outline', 'colour' => 'black'], 'text' => ['style' => 'text', 'colour' => 'black'], 'type' => [], 'hover' => 'darken'];
+    expect(pkdeStatuses($facts)['Buttons (global button system)'])->toBe('INFO');
+
+    foreach ([false, null] as $none) {
+        $facts['buttons'] = $none;
+        expect(pkdeStatuses($facts)['Buttons (global button system)'])->toBe('INFO');
+    }
+
+    unset($facts['buttons']);
+    expect(pkdeStatuses($facts))->not->toHaveKey('Buttons (global button system)');
+});
