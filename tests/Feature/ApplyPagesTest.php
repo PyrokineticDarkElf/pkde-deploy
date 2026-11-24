@@ -46,7 +46,7 @@ it('says how it works: plan by default, by slug, a revision, never creating a pa
     $source = file_get_contents(dirname(__DIR__, 2) . '/bin/deploy/apply-pages.php');
 
     expect($source)->toContain("'mode' => 'plan'", 'wp_save_post_revision', "'name' => pkde_pages_slug(\$file)", "'content/pages', 'config/content/pages'", 'page missing', 'matches', "kses_remove_filters")
-        ->and($source)->not->toContain('wp_insert_post'); // it never creates a page
+        ->and(substr_count($source, 'wp_insert_post('))->toBe(1)->and($source)->toContain("'post_type' => 'pkde_legal', 'post_status' => 'draft'"); // it never creates a page: the one insert is a DRAFT legal document (TPL-268)
 });
 
 it('finds the FAQ group placeholders in a page file, once each (TPL-258)', function () {
@@ -72,4 +72,28 @@ it('names the blocks a legal document may not hold, from the nested tree too (TP
 
     $source = file_get_contents(dirname(__DIR__, 2) . '/bin/deploy/apply-pages.php');
     expect($source)->toContain('content/legal', "'pkde_legal'", 'not allowed in a legal document', 'legal-migrate apply converts the Page first');
+});
+
+
+it('reads the front matter and the sidecar of a legal file, and says what is wrong with them (TPL-268)', function () {
+    $file = "<!-- pkde-legal {\"type\": \"privacy\", \"title\": \"Privacy policy\", \"effective\": \"2026-11-01\"} -->\n<!-- wp:paragraph -->\n<p>Text.</p>\n<!-- /wp:paragraph -->\n";
+    $r = pkde_pages_legal_front_matter($file);
+
+    expect($r['meta'])->toBe(['type' => 'privacy', 'title' => 'Privacy policy', 'effective' => '2026-11-01'])
+        ->and($r['content'])->toStartWith('<!-- wp:paragraph -->')->and($r['content'])->not->toContain('pkde-legal')
+        ->and($r['problem'])->toBe('');
+
+    // a sidecar gives the type; the front matter wins where both say something
+    $both = pkde_pages_legal_front_matter("<!-- pkde-legal {\"title\": \"From the file\"} -->\n<p>x</p>", ['type' => 'cookies', 'title' => 'From the sidecar', 'effective' => '2026-02-03']);
+    expect($both['meta'])->toBe(['type' => 'cookies', 'title' => 'From the file', 'effective' => '2026-02-03']);
+
+    // none: nothing to create from
+    expect(pkde_pages_legal_front_matter('<p>x</p>')['meta']['type'])->toBe('')
+        ->and(pkde_pages_legal_front_matter("<!-- pkde-legal {\"type\": \"nonsense\"} -->\n<p>x</p>")['problem'])->toContain('is not one of')
+        ->and(pkde_pages_legal_front_matter("<!-- pkde-legal {\"type\": \"terms\", \"effective\": \"20/11/2026\"} -->")['problem'])->toContain('YYYY-MM-DD')
+        ->and(pkde_pages_legal_front_matter('<!-- pkde-legal {not json} -->')['problem'])->toContain('not valid JSON')
+        ->and(pkde_pages_title_from_slug('privacy-policy'))->toBe('Privacy policy');
+
+    $source = file_get_contents(dirname(__DIR__, 2) . '/bin/deploy/apply-pages.php');
+    expect($source)->toContain("'post_status' => 'draft'", "'would create'", 'sanitize_title($d->post_title)', '_pkde_legal_type');
 });

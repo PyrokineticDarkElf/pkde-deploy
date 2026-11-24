@@ -10,7 +10,9 @@
  *   ... dir=content/pages                                                  where the files are (the default); a path from the site's root, or absolute
  *
  * One file per page, content/pages/<slug>.html (block markup); and one per legal document, content/legal/<slug>.html, applied to the pkde_legal post with that slug (run legal-migrate
- * apply first: it converts the Page; a file with a block outside the legal list is refused and the block named). For each file it:
+ * apply first: it converts the Page; a file with a block outside the legal list is refused and the block named). A DRAFT document is found too (by its slug, or by its title when it
+ * has no slug yet), and a MISSING one is created as a draft when the file names its type: a first line `<!-- pkde-legal {"type": "privacy", "title": "Privacy policy", "effective": "2026-11-01"} -->`
+ * or a sidecar `<slug>.json` with the same keys (the front matter is not part of the content). For each file it:
  *   - finds the page by slug (any status); it never creates a page: a missing slug is reported;
  *   - resolves {{faq-group:<slug>}} to the id of that FAQ group, for the kit FAQ block in group mode ("groups":[{{faq-group:general-questions}}]); the group must exist, none is created;
  *   - resolves {{form:<key>}} to the Contact Form 7 form tagged with that key (App\form_id; for `contact` also the form titled "Contact Us" when none is tagged);
@@ -100,23 +102,51 @@ sort($files);
 $legalFiles = $legalDir !== null ? (glob($legalDir . '/*.html') ?: []) : [];
 sort($legalFiles);
 $jobs = array_merge(array_map(fn($f) => [$f, 'page'], $files), array_map(fn($f) => [$f, 'pkde_legal'], $legalFiles));
-$counts = ['match' => 0, 'would update' => 0, 'updated' => 0, 'page missing' => 0, 'problem' => 0];
+$counts = ['match' => 0, 'would update' => 0, 'updated' => 0, 'would create' => 0, 'created' => 0, 'page missing' => 0, 'problem' => 0];
 echo "apply-pages ($mode): " . count($files) . ' file(s)' . ($legalFiles ? ' and ' . count($legalFiles) . ' legal file(s)' : '') . "\n";
 kses_remove_filters(); // wp-cli has no logged-in user: do not let kses rewrite the block markup
 
 foreach ($jobs as [$file, $postType]) {
     $isLegal = $postType === 'pkde_legal';
     $slug = ($isLegal ? 'legal/' : '') . pkde_pages_slug($file);
-    $page = $isLegal && ! post_type_exists('pkde_legal') ? [] : get_posts(['post_type' => $postType, 'name' => pkde_pages_slug($file), 'post_status' => 'any', 'numberposts' => 1]);
+    $page = $isLegal && ! post_type_exists('pkde_legal') ? [] : get_posts(['post_type' => $postType, 'name' => pkde_pages_slug($file), 'post_status' => $isLegal ? ['publish', 'draft', 'pending', 'private', 'future'] : 'any', 'numberposts' => 1]); // 'any' hides a document's drafts from a request with no user: name the statuses
+    $legalMeta = ['meta' => ['type' => '', 'title' => '', 'effective' => ''], 'content' => '', 'problem' => ''];
+
+    if ($isLegal) {
+        // the front matter (a first <!-- pkde-legal {...} --> comment) and a sidecar <slug>.json say what the document is; neither is part of the content
+        $sidecarFile = preg_replace('/\.html$/', '.json', $file);
+        $sidecar = is_file($sidecarFile) ? (array) json_decode((string) file_get_contents($sidecarFile), true) : [];
+        $legalMeta = pkde_pages_legal_front_matter((string) file_get_contents($file), $sidecar);
+
+        // a draft made without a slug has an empty post_name (WordPress names it when it is published): find it by its title
+        if (! $page && post_type_exists('pkde_legal')) {
+            $byTitle = array_filter(get_posts(['post_type' => 'pkde_legal', 'post_status' => ['draft', 'pending', 'auto-draft'], 'numberposts' => 100]), fn($d) => $d->post_name === '' && sanitize_title($d->post_title) === pkde_pages_slug($file));
+            $page = array_slice(array_values($byTitle), 0, 1);
+        }
+    }
+
+    // a missing legal document is created as a DRAFT when the file says what it is (a type): a site needs no script of its own
+    if (! $page && $isLegal && post_type_exists('pkde_legal') && $legalMeta['meta']['type'] !== '' && $legalMeta['problem'] === '') {
+        $created = true;
+        $page = [(object) ['ID' => 0, 'post_content' => '', 'post_type' => 'pkde_legal']];
+    } else {
+        $created = false;
+    }
+
+    if ($isLegal && $legalMeta['problem'] !== '') {
+        printf("%-24s PROBLEM: %s\n", $slug, $legalMeta['problem']);
+        $counts['problem']++;
+        continue;
+    }
 
     if (! $page) {
-        printf($isLegal ? "%-24s document missing (legal-migrate apply converts the Page first; nothing is created here)\n" : "%-24s page missing\n", $slug);
+        printf($isLegal ? "%-24s document missing (legal-migrate apply converts the Page first, or give the file a type to create it as a draft: <!-- pkde-legal {\"type\": \"privacy\"} --> or a %s.json; nothing is created here)\n" : "%-24s page missing\n", $slug, pkde_pages_slug($file));
         $counts['page missing']++;
         continue;
     }
 
     $page = $page[0];
-    $content = (string) file_get_contents($file);
+    $content = $isLegal ? $legalMeta['content'] : (string) file_get_contents($file);
     $failed = false;
 
     foreach (pkde_pages_form_keys($content) as $key) {
@@ -174,15 +204,34 @@ foreach ($jobs as [$file, $postType]) {
         printf("%-24s missing pictures: %s\n", $slug, implode(', ', array_keys($missing)));
     }
 
-    if ($same) {
+    if ($same && ! $created) {
         printf("%-24s matches (%s)\n", $slug, $note);
         $counts['match']++;
         continue;
     }
 
     if ($mode === 'plan') {
-        printf("%-24s would update (%s)\n", $slug, $note);
-        $counts['would update']++;
+        printf($created ? "%-24s would create as a draft, type %s (%s)\n" : "%-24s would update (%s)\n", $slug, ...($created ? [$legalMeta['meta']['type'], $note] : [$note]));
+        $counts[$created ? 'would create' : 'would update']++;
+        continue;
+    }
+
+    if ($created) {
+        $new_id = wp_insert_post([
+            'post_type' => 'pkde_legal', 'post_status' => 'draft', 'post_name' => pkde_pages_slug($file), 'comment_status' => 'closed', 'ping_status' => 'closed',
+            'post_title' => $legalMeta['meta']['title'] !== '' ? $legalMeta['meta']['title'] : pkde_pages_title_from_slug(pkde_pages_slug($file)), 'post_content' => wp_slash($new),
+        ], true);
+
+        if (is_wp_error($new_id) || ! $new_id) {
+            printf("%-24s PROBLEM: the document could not be created\n", $slug);
+            $counts['problem']++;
+            continue;
+        }
+
+        update_post_meta($new_id, '_pkde_legal_type', $legalMeta['meta']['type']);
+        $legalMeta['meta']['effective'] !== '' && update_post_meta($new_id, '_pkde_legal_effective', $legalMeta['meta']['effective']);
+        printf("%-24s created as a draft, type %s (%s)\n", $slug, $legalMeta['meta']['type'], $note);
+        $counts['created']++;
         continue;
     }
 
