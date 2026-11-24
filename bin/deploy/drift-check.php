@@ -279,6 +279,62 @@ function pkde_drift_global_blocks_facts(): array
 }
 
 /**
+ * Site details (WP-106, platform module site-details): the declared type, what the type still needs, the stored values that differ from the declaration, and the values typed
+ * separately in Rank Math that differ from Site details (read from the database, not through the module's feed). Null when the module is not loaded.
+ */
+function pkde_drift_site_details_facts(): ?array
+{
+    global $wpdb;
+
+    if (! function_exists('App\\MuPlugins\\site_details') || ! isset($wpdb)) {
+        return null;
+    }
+
+    $d = App\MuPlugins\site_details();
+    $declaration = App\MuPlugins\site_details_declaration();
+    $stored = (array) get_option(App\MuPlugins\SITE_DETAILS_OPTION, []);
+    $differs = [];
+
+    foreach (array_keys(App\MuPlugins\SITE_DETAILS_BUSINESS) as $key) {
+        $declared = (string) ($declaration['values']['business'][$key] ?? '');
+        $kept = (string) ($stored['business'][$key] ?? '');
+
+        if ($declared !== '' && $kept !== '' && $kept !== $declared) {
+            $differs[] = "business.$key";
+        }
+    }
+
+    foreach (['phones' => 'number', 'emails' => 'address'] as $group => $field) {
+        $declared = (string) ($declaration['values'][$group][0][$field] ?? '');
+        $kept = (string) ($stored[$group][0][$field] ?? '');
+
+        if ($declared !== '' && $kept !== '' && $kept !== $declared) {
+            $differs[] = "$group.0.$field";
+        }
+    }
+
+    $raw = maybe_unserialize((string) $wpdb->get_var("SELECT option_value FROM {$wpdb->options} WHERE option_name = 'rank-math-options-titles'"));
+    $raw = is_array($raw) ? $raw : [];
+    $rank = [];
+    $pairs = ['name' => [(string) ($raw['knowledgegraph_name'] ?? ''), (string) ($d['business']['trading_name'] ?? '')], 'phone' => [(string) ($raw['phone'] ?? ''), (string) ($d['phones'][0]['number'] ?? '')],
+        'email' => [(string) ($raw['email'] ?? ''), (string) ($d['emails'][0]['address'] ?? '')]];
+
+    foreach ($pairs as $label => [$typed, $site]) {
+        if ($typed !== '' && $site !== '' && $typed !== $site) {
+            $rank[] = $label;
+        }
+    }
+
+    return [
+        'type' => (string) $declaration['type'],
+        'missing' => App\MuPlugins\site_details_required($d, (string) $declaration['type']),
+        'differs' => $differs,
+        'rank_math' => $rank,
+        'locked' => count($declaration['locked']),
+    ];
+}
+
+/**
  * The legal documents (WP-104, platform module legal): what is published by type, the two settings that may point at a document, the documents with no effective date,
  * and any address a Page and a document share. Null when the post type is not registered (an older platform, or the module is switched off).
  */
@@ -747,6 +803,23 @@ function pkde_drift_evaluate(array $f): array
         }
     }
 
+    // Site details (WP-106): the type's required fields are present, a stored value that differs from the declaration is listed, and a value typed separately in Rank Math that
+    // differs from Site details is flagged (Site details overrides it in the output). Only when the facts carry the key.
+    if (array_key_exists('site_details', $f)) {
+        $sd = $f['site_details'];
+        if (! is_array($sd)) {
+            $add('INFO', 'Site details', 'the platform site-details module is not loaded (an older platform release, or PKDE_PLATFORM_DISABLE names it)');
+        } else {
+            $cmp('Site details: the required fields for a ' . $sd['type'] . ' are present', empty($sd['missing']), 'missing: ' . implode(', ', (array) $sd['missing']) . ' (Settings > Site details)');
+            if (! empty($sd['differs'])) {
+                $add('INFO', 'Site details differing from the declaration', implode(', ', (array) $sd['differs']) . ' (edited in wp-admin; the declaration only seeds an unlocked field)');
+            }
+            if (! empty($sd['rank_math'])) {
+                $add('WARN', 'Rank Math holds a different ' . implode(', ', (array) $sd['rank_math']) . ' than Site details', 'typed separately in Rank Math Local SEO; Site details wins in the structured data, so clear it in Rank Math to keep one source');
+            }
+        }
+    }
+
     // Legal documents (WP-104): Privacy and Cookies published on every site, Terms and Returns on a shop, the core privacy setting and the WooCommerce terms setting pointing at a
     // published document, an effective date on each, no address shared with a Page. Only when the facts carry the key.
     if (array_key_exists('legal', $f)) {
@@ -1148,6 +1221,7 @@ function pkde_drift_collect(): array
         'global_blocks' => pkde_drift_global_blocks_facts(),
         'faq' => pkde_drift_faq_facts(),
         'legal' => pkde_drift_legal_facts(),
+        'site_details' => pkde_drift_site_details_facts(),
         'motion' => function_exists('App\\motion_mode') ? App\motion_mode() : null,
         'turnstile' => [
             'appearance' => get_option('cfturnstile_appearance', 'always'),

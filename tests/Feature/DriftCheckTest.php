@@ -977,3 +977,26 @@ it('checks the legal documents (WP-104): Privacy and Cookies everywhere, Terms a
     unset($facts['legal']);
     expect(pkdeStatuses($facts))->not->toHaveKey('Legal documents');
 });
+
+
+it('checks Site details (WP-106): the type\'s required fields, stored values differing from the declaration, and a different value typed in Rank Math', function () {
+    $facts = pkdeGoodFacts();
+    $facts['site_details'] = ['type' => 'local-business', 'missing' => [], 'differs' => [], 'rank_math' => [], 'locked' => 4];
+    $statuses = pkdeStatuses($facts);
+
+    expect($statuses['Site details: the required fields for a local-business are present'])->toBe('PASS')
+        ->and($statuses)->not->toHaveKey('Site details differing from the declaration');
+
+    $facts['site_details'] = ['type' => 'shop', 'missing' => ['an address', 'the legal name'], 'differs' => ['business.trading_name'], 'rank_math' => ['phone', 'email'], 'locked' => 0];
+    $statuses = pkdeStatuses($facts);
+
+    expect($statuses['Site details: the required fields for a shop are present'])->toBe('FAIL')
+        ->and($statuses['Site details differing from the declaration'])->toBe('INFO')
+        ->and($statuses['Rank Math holds a different phone, email than Site details'])->toBe('WARN');
+
+    $facts['site_details'] = null;
+    expect(pkdeStatuses($facts)['Site details'])->toBe('INFO');
+
+    unset($facts['site_details']);
+    expect(pkdeStatuses($facts))->not->toHaveKey('Site details');
+});
