@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026.11.24
+
+`site-details-migrate.php` and the Site details drift rows (WP-106, TPL-265). **Adopt:** bb and tcs now (staging pilots) with platform and kit 2026.11.24; cs also names its adapter; the live sites after their December release. Not Train-ready.
+
+- **`bin/deploy/site-details-migrate.php`:** `plan` (read-only) lists the old `client_*` options (read from the database, not through the read shim) and the Site details field each goes to, the declaration, and what is stored; `apply [adapter=PATH]` writes Site details. A field that already has a value is KEPT, so a second run changes nothing and a value edited in wp-admin is never overwritten; locked fields are not stored; a number or link it cannot read is named and left out. A site that keeps its details elsewhere (cs: the `App\Business` constants) names a small adapter file that returns them in the Site details shape. The old options are not deleted (the platform's read shim answers them for one release). It ships in the artifact.
+- **Drift rows:** the required fields for the declared type are present (a name, a phone or an email, an address on a local business, the legal name on a shop); an INFO row lists stored values that differ from the declaration; a WARN row flags a name, phone or email typed separately in Rank Math that differs from Site details; an INFO row when the platform has no module.
+- Real WordPress on the template stack with old options seeded: plan listed them and flagged a bad link; apply wrote 1 phone, 1 email, 1 address and 2 profiles (the adapter's legal name and company number were dropped because the declaration locks them); a second apply changed nothing; the shim answered `client_email` and the others from Site details while the database rows stayed; the drift facts query returned the right values. Pest 162, shell test 13.
+
 ## 2026.11.20.7
 
 `apply-pages.php` applies legal documents (TPL-261). **Adopt:** bb (3 legal page files) and tcs with the legal pilots; every other site when it converts its legal Pages.
