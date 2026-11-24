@@ -386,6 +386,20 @@ function pkde_drift_legal_facts(): ?array
  *
  * @return array<string, mixed>|null
  */
+/** The shape tokens the theme was generated with (resources/generated/shape.php of the kit), or null without that file. */
+function pkde_drift_shape_facts(string $themeDir): ?array
+{
+    $file = $themeDir . '/resources/generated/shape.php';
+
+    if (! is_file($file)) {
+        return null;
+    }
+
+    $shape = include $file;
+
+    return is_array($shape) ? $shape : null;
+}
+
 function pkde_drift_faq_facts(): ?array
 {
     global $wpdb;
@@ -773,6 +787,14 @@ function pkde_drift_evaluate(array $f): array
         if ($c['rank_math_visible'] !== null) {
             $cmp('Block editor: Rank Math blocks hidden from the inserter', (array) $c['rank_math_visible'] === [], 'still in the inserter: ' . implode(', ', (array) $c['rank_math_visible']));
         }
+    }
+
+    // The shape (WP-108 A, shape in config/brand-palette.json): INFO only, which preset the site runs and its radii. Only when the facts carry the key; null is a kit without shape tokens.
+    if (array_key_exists('shape', $f)) {
+        $sh = $f['shape'];
+        $add('INFO', 'Shape (corner radius and border thickness)', $sh === null
+            ? 'the kit has no shape tokens yet (an older pkde/sage-kit)'
+            : 'is ' . (string) ($sh['preset'] ?? '?') . ' (radius ' . implode(' / ', array_map(fn($k) => $k . ' ' . ($sh['radius'][$k] ?? '?'), ['sm', 'md', 'lg', 'full'])) . '; border ' . ($sh['border']['thin'] ?? '?') . ' / ' . ($sh['border']['thick'] ?? '?') . ')');
     }
 
     // The motion switch (WP-103, pkde_kit/motion): INFO only, which mode the site runs. Only when the facts carry the key; null is a kit without the motion system.
@@ -1223,6 +1245,7 @@ function pkde_drift_collect(): array
         'legal' => pkde_drift_legal_facts(),
         'site_details' => pkde_drift_site_details_facts(),
         'motion' => function_exists('App\\motion_mode') ? App\motion_mode() : null,
+        'shape' => pkde_drift_shape_facts(get_template_directory()),
         'turnstile' => [
             'appearance' => get_option('cfturnstile_appearance', 'always'),
             'login' => get_option('cfturnstile_login'),

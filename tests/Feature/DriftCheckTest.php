@@ -1000,3 +1000,16 @@ it('checks Site details (WP-106): the type\'s required fields, stored values dif
     unset($facts['site_details']);
     expect(pkdeStatuses($facts))->not->toHaveKey('Site details');
 });
+
+
+it('says which shape the site runs (WP-108 A), INFO only', function () {
+    $facts = pkdeGoodFacts();
+    $facts['shape'] = ['preset' => 'round', 'radius' => ['sm' => '0.75rem', 'md' => '1.5rem', 'lg' => '3rem', 'full' => '9999px'], 'border' => ['thin' => '1px', 'thick' => '2px']];
+    expect(pkdeStatuses($facts)['Shape (corner radius and border thickness)'])->toBe('INFO');
+
+    $facts['shape'] = null;
+    expect(pkdeStatuses($facts)['Shape (corner radius and border thickness)'])->toBe('INFO');
+
+    unset($facts['shape']);
+    expect(pkdeStatuses($facts))->not->toHaveKey('Shape (corner radius and border thickness)');
+});
