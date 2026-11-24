@@ -309,26 +309,39 @@ rm -f "$OPCACHE_STALE_MARKER"
 # requests spread over distinct workers; every one resets the opcache and clears its realpath cache. The distinct worker pids and opcache instances are counted.
 # When every parallel request got a worker of its own there may be more workers than requests: the log says so (raise OPCACHE_EXTRA_HITS).
 hit_all_workers() {
-    local url="$1" token="$2" hits="${OPCACHE_EXTRA_HITS:-16}" i out pids pools w n
+    local url="$1" token="$2" hits="${OPCACHE_EXTRA_HITS:-16}" max="${OPCACHE_MAX_HITS:-64}" i out pids pools w n bg
     [ "$hits" -gt 0 ] 2>/dev/null || return 0
-    out="$(mktemp -d)" || return 0
-    local bg=""
-    for i in $(seq 1 "$hits"); do
-        ( gate_curl -fsSL --max-time 30 "$url/zz-opcache-$token.php?hold=1&n=$i" > "$out/$i" 2>/dev/null ) &
-        bg="$bg $!"
+    [ "$max" -ge "$hits" ] 2>/dev/null || max="$hits"
+    while :; do
+        out="$(mktemp -d)" || return 0
+        bg=""
+        for i in $(seq 1 "$hits"); do
+            ( gate_curl -fsSL --max-time 30 "$url/zz-opcache-$token.php?hold=1&n=$i" > "$out/$i" 2>/dev/null ) &
+            bg="$bg $!"
+        done
+        # wait for OUR requests only: a bare `wait` would also wait for any other background job of this run
+        # shellcheck disable=SC2086
+        wait $bg
+        pids="$(cat "$out"/* 2>/dev/null | sed -n 's/^pool=[^ ]* pid=\([0-9]*\) .*/\1/p' | sort -u)"
+        pools="$(cat "$out"/* 2>/dev/null | sed -n 's/^pool=\([^ ]*\) .*/\1/p' | sort -u)"
+        rm -rf "$out"
+        w="$(printf '%s\n' "$pids" | grep -c .)" || w=0
+        n="$(printf '%s\n' "$pools" | grep -c .)" || n=0
+        if [ "$w" -gt 0 ]; then
+            echo "Web PHP: $hits parallel probe requests reached $w distinct PHP workers in $n opcache instance(s); each reset the opcache and cleared its realpath cache"
+        fi
+        # Every request got a worker of its own: the pool may have MORE workers than requests, and a worker that answered none keeps its realpath cache (tcs staging, a pool of more than 16:
+        # stepping back printed BROKEN SITE). Ask again with twice as many, until one worker answers twice (the pool is covered) or the cap.
+        if [ "$w" -gt 0 ] && [ "$w" -ge "$hits" ]; then
+            if [ "$hits" -lt "$max" ]; then
+                hits=$((hits * 2)); [ "$hits" -gt "$max" ] && hits="$max"
+                echo "Web PHP: every probe request got a worker of its own, so the pool may have more workers; requesting again with $hits"
+                continue
+            fi
+            echo "WARN: every parallel probe request got a worker of its own even at $hits: the pool may have more workers, and a worker that answered none keeps its realpath cache (raise OPCACHE_MAX_HITS)." >&2
+        fi
+        break
     done
-    # wait for OUR requests only: a bare `wait` would also wait for any other background job of this run
-    # shellcheck disable=SC2086
-    wait $bg
-    pids="$(cat "$out"/* 2>/dev/null | sed -n 's/^pool=[^ ]* pid=\([0-9]*\) .*/\1/p' | sort -u)"
-    pools="$(cat "$out"/* 2>/dev/null | sed -n 's/^pool=\([^ ]*\) .*/\1/p' | sort -u)"
-    rm -rf "$out"
-    w="$(printf '%s\n' "$pids" | grep -c .)" || w=0
-    n="$(printf '%s\n' "$pools" | grep -c .)" || n=0
-    if [ "$w" -gt 0 ]; then
-        echo "Web PHP: $hits parallel probe requests reached $w distinct PHP workers in $n opcache instance(s); each reset the opcache and cleared its realpath cache"
-        [ "$w" -ge "$hits" ] && echo "WARN: every parallel probe request got a worker of its own: the pool may have more than $hits workers, and a worker that answered none keeps its realpath cache (raise OPCACHE_EXTRA_HITS)." >&2
-    fi
     [ "$n" -gt 1 ] && echo "WARN: $n different PHP opcache instances answered the probe (more than one pool or node serves this site); each answering one was reset, a pool that answered no request was not." >&2
     return 0
 }
@@ -407,7 +420,7 @@ verify_fresh_render() {
         return 0
     fi
 
-    local gate code body_file="$(mktemp)"
+    local gate code body_file="$(mktemp)" five=0
     gate="$(sed -n 's/^STAGING_GATE_AUTH=//p' "$SHARED_DIR/.env" 2>/dev/null | tr -d "\"'\r" | tail -1)" || gate=""
 
     while :; do
@@ -429,6 +442,16 @@ verify_fresh_render() {
                 fi
                 return 0 ;;
             5??)
+                # A 500 can be one worker that still holds the previous release's realpath cache (it answers fine a moment later: tcs staging, TCS-132). Look again a few times, with the
+                # opcache reset and a short pause, before calling the site broken.
+                if [ "$five" -lt "${PKDE_FRESH_RENDER_5XX_RETRIES:-3}" ]; then
+                    five=$((five + 1))
+                    echo "WARN: the home page answered HTTP $code once after release $RELEASE was activated; resetting the web PHP again and looking again ($five of ${PKDE_FRESH_RENDER_5XX_RETRIES:-3})" >&2
+                    gate_curl -fsSL --max-time 30 "$url/zz-opcache-$token.php?again=5xx$five" >/dev/null 2>&1 || true
+                    hit_all_workers "$url" "$token"
+                    sleep "${PKDE_FRESH_RENDER_PAUSE:-5}"
+                    continue
+                fi
                 rm -f "$body_file"
                 echo "WARN: ================================================================" >&2
                 echo "WARN: BROKEN SITE: the home page of $url answers HTTP $code after release $RELEASE was activated." >&2
@@ -448,6 +471,7 @@ verify_fresh_render() {
             echo "Fresh render check: not done, the page links no app-<hash>.css stylesheet"
             return 0
         fi
+        [ "$five" -gt 0 ] && echo "WARN: the home page answered a 5xx $five time(s) and then answered 200: a PHP worker had not dropped the previous release's cache yet; it is fine now." >&2
         if [ "$served" = "$expected" ]; then
             rm -f "$body_file"
             echo "Fresh render check: the uncached home page links $served, as this release's manifest does"

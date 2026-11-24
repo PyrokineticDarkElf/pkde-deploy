@@ -47,7 +47,7 @@ check "without a gate, nothing is sent on stdin" "$(wc -c < "$FAKE_STDIN" | tr -
 
 # the scripts: the web requests of a switch go through gate_curl, and no script can print credentials
 code="$REPO_ROOT/bin/deploy/activate-release.sh"
-check "the opcache probes and the hardening probes use gate_curl" "$(grep -v '^[[:space:]]*#' "$code" | grep -c 'gate_curl -.*\(zz-opcache\|"\$url\$path"\)')" 5
+check "the opcache probes and the hardening probes use gate_curl" "$(grep -v '^[[:space:]]*#' "$code" | grep -c 'gate_curl -.*\(zz-opcache\|"\$url\$path"\)')" 6
 check "no bare curl asks for the opcache probe" "$(grep -v '^[[:space:]]*#' "$code" | grep -c '[^_]curl .*zz-opcache')" 0
 check "no deploy script prints a URL curl built from credentials" "$(grep -rn 'redirect_url\|url_effective' "$REPO_ROOT/bin" "$REPO_ROOT/.github" | grep -vc ':[0-9]*:[[:space:]]*#')" 0
 check "no deploy script puts credentials in a curl command line (-u, --user)" "$(grep -rnE 'curl[^|;]* (-u|--user) ' "$REPO_ROOT/bin" "$REPO_ROOT/.github" | grep -vc ':[0-9]*:[[:space:]]*#')" 0

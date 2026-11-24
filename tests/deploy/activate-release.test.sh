@@ -252,12 +252,12 @@ rm -f $T/page-css $T/page-css-then $T/page-fail
 
 # the diagnostics line, and the six more probe hits
 : > $T/curl.log; echo okinfo > $T/curl-mode; mkrelease R30
-OPCACHE_EXTRA_HITS=6 bash $S $BASE R30 5 >$T/s9h1.log 2>&1; rc=$?
+OPCACHE_EXTRA_HITS=6 OPCACHE_MAX_HITS=6 bash $S $BASE R30 5 >$T/s9h1.log 2>&1; rc=$?
 check "diagnostics: the pool line is logged" "grep -q '^Web PHP: pool=111 pid=[0-9]* reset=true sapi=fpm-fcgi' $T/s9h1.log && grep -q 'revalidate_path=0' $T/s9h1.log"
 check "extra hits: one probe plus six more" "[ \$(grep -c 'zz-opcache.*n=' $T/curl.log) -eq 6 ]"
 check "extra hits: the parallel batch reached distinct workers in one instance" "grep -q '6 parallel probe requests reached 6 distinct PHP workers in 1 opcache instance' $T/s9h1.log"
 : > $T/curl.log; echo twopools > $T/curl-mode; mkrelease R31
-OPCACHE_EXTRA_HITS=12 bash $S $BASE R31 5 >$T/s9h2.log 2>&1
+OPCACHE_EXTRA_HITS=12 OPCACHE_MAX_HITS=12 bash $S $BASE R31 5 >$T/s9h2.log 2>&1
 check "two pools answering: counted and warned" "grep -q 'WARN: 2 different PHP opcache instances answered the probe' $T/s9h2.log"
 : > $T/curl.log; echo resetfalse > $T/curl-mode; mkrelease R32
 bash $S $BASE R32 5 >$T/s9h3.log 2>&1
