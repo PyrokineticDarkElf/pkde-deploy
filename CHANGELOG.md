@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026.11.24.1
+
+The rollback probe covers pools of more than 16 PHP workers (TPL-271, tcs) and a drift row shows the shape preset (WP-108 A, TPL-266). **Adopt:** every site with the next deploy workflow tag (bb and tcs now; the others in February). Not Train-ready.
+
+- **Rollback and activation probe (TPL-271):** `hit_all_workers` asks again with twice as many parallel requests (cap `OPCACHE_MAX_HITS`, default 64) until one worker has answered twice, so every worker of a pool of more than 16 resets its opcache and realpath cache; a home page that answers 5xx once after activation is looked at again (`PKDE_FRESH_RENDER_5XX_RETRIES`, default 3) with the web PHP reset again before the run says BROKEN SITE. A site that recovers says so in a WARN line. New `tests/deploy/hit-workers.test.sh` (11 checks), run in CI.
+- **Drift row:** an INFO row, `Shape (corner radius and border thickness)`, shows the preset and the radius and border tokens the theme was generated with (`resources/generated/shape.php`); older kits say they have no shape tokens. Never a FAIL.
+
 ## 2026.11.24
 
 `site-details-migrate.php` and the Site details drift rows (WP-106, TPL-265). **Adopt:** bb and tcs now (staging pilots) with platform and kit 2026.11.24; cs also names its adapter; the live sites after their December release. Not Train-ready.
