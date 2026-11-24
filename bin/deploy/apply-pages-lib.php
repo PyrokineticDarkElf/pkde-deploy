@@ -110,3 +110,54 @@ function pkde_pages_disallowed_blocks(array $blocks, array $allowed): array
 
     return $found;
 }
+
+/** The document types a legal file may name (the platform legal module's list). */
+const PKDE_PAGES_LEGAL_TYPES = ['privacy', 'cookies', 'terms', 'returns', 'delivery', 'accessibility', 'modern-slavery', 'other'];
+
+/**
+ * The front matter of a legal file and the file's content without it. The front matter is a first HTML comment holding JSON:
+ * `<!-- pkde-legal {"type": "privacy", "title": "Privacy policy", "effective": "2026-11-01"} -->`. A sidecar `<slug>.json` with the same keys is merged under it (the front matter wins).
+ *
+ * @param  array<string, mixed>  $sidecar  the decoded sidecar, [] when there is none
+ * @return array{meta: array<string, string>, content: string, problem: string} `problem` names what is wrong with the front matter, '' when nothing is
+ */
+function pkde_pages_legal_front_matter(string $content, array $sidecar = []): array
+{
+    $meta = $sidecar;
+    $problem = '';
+
+    if (preg_match('/^\s*<!--\s*pkde-legal\s+(\{.*?\})\s*-->\s*/s', $content, $m) === 1) {
+        $decoded = json_decode($m[1], true);
+
+        if (is_array($decoded)) {
+            $meta = array_replace($meta, $decoded);
+        } else {
+            $problem = 'the pkde-legal front matter is not valid JSON';
+        }
+
+        $content = substr($content, strlen($m[0]));
+    }
+
+    $clean = [];
+    foreach (['type', 'title', 'effective'] as $key) {
+        $clean[$key] = is_string($meta[$key] ?? null) ? trim($meta[$key]) : '';
+    }
+
+    if ($clean['type'] !== '' && ! in_array($clean['type'], PKDE_PAGES_LEGAL_TYPES, true)) {
+        $problem = 'the type "' . $clean['type'] . '" is not one of ' . implode(', ', PKDE_PAGES_LEGAL_TYPES);
+    }
+
+    if ($clean['effective'] !== '' && (DateTimeImmutable::createFromFormat('!Y-m-d', $clean['effective']) === false || DateTimeImmutable::createFromFormat('!Y-m-d', $clean['effective'])->format('Y-m-d') !== $clean['effective'])) {
+        $problem = 'effective must be a date as YYYY-MM-DD';
+    }
+
+    return ['meta' => $clean, 'content' => ltrim($content, "\n"), 'problem' => $problem];
+}
+
+/** A title for a document made from its slug when the file names none: "privacy-policy" becomes "Privacy policy". */
+function pkde_pages_title_from_slug(string $slug): string
+{
+    $words = str_replace(['-', '_'], ' ', $slug);
+
+    return ucfirst(strtolower(trim($words)));
+}
