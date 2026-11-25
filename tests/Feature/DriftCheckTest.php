@@ -1028,3 +1028,17 @@ it('says whether the site declares the global buttons (WP-109), INFO only', func
     unset($facts['buttons']);
     expect(pkdeStatuses($facts))->not->toHaveKey('Buttons (global button system)');
 });
+
+
+it('warns while the kit reads the old client_* options because Site details is not migrated (TPL-277)', function () {
+    $facts = pkdeGoodFacts();
+    $facts['site_details'] = ['type' => 'local-business', 'missing' => [], 'differs' => [], 'rank_math' => [], 'locked' => 0, 'legacy' => ['phones', 'emails']];
+
+    expect(pkdeStatuses($facts)['Site details not migrated; reading legacy client_* values'])->toBe('WARN');
+
+    $facts['site_details']['legacy'] = [];
+    expect(pkdeStatuses($facts))->not->toHaveKey('Site details not migrated; reading legacy client_* values');
+
+    unset($facts['site_details']['legacy']); // facts from an older run
+    expect(pkdeStatuses($facts))->not->toHaveKey('Site details not migrated; reading legacy client_* values');
+});

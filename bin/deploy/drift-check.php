@@ -331,6 +331,8 @@ function pkde_drift_site_details_facts(): ?array
         'differs' => $differs,
         'rank_math' => $rank,
         'locked' => count($declaration['locked']),
+        // the groups the kit reads from the old client_* options because Site details holds nothing for them (TPL-277); [] for a kit without the fallback
+        'legacy' => function_exists('App\\site_details_legacy_fallbacks') ? \App\site_details_legacy_fallbacks() : [],
     ];
 }
 
@@ -863,6 +865,9 @@ function pkde_drift_evaluate(array $f): array
             $cmp('Site details: the required fields for a ' . $sd['type'] . ' are present', empty($sd['missing']), 'missing: ' . implode(', ', (array) $sd['missing']) . ' (Settings > Site details)');
             if (! empty($sd['differs'])) {
                 $add('INFO', 'Site details differing from the declaration', implode(', ', (array) $sd['differs']) . ' (edited in wp-admin; the declaration only seeds an unlocked field)');
+            }
+            if (! empty($sd['legacy'])) {
+                $add('WARN', 'Site details not migrated; reading legacy client_* values', implode(', ', (array) $sd['legacy']) . ' come from the old client_* options, so the site shows them but they cannot be edited in Settings > Site details yet: run bin/deploy/site-details-migrate.php plan, then apply');
             }
             if (! empty($sd['rank_math'])) {
                 $add('WARN', 'Rank Math holds a different ' . implode(', ', (array) $sd['rank_math']) . ' than Site details', 'typed separately in Rank Math Local SEO; Site details wins in the structured data, so clear it in Rank Math to keep one source');

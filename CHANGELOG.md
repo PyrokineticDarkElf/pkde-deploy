@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026.11.25
+
+A drift WARN while a site's Site details are not migrated (TPL-277). **Adopt:** with kit 2026.11.25.1: bb and tcs now. Never a FAIL.
+- **Drift row:** `Site details not migrated; reading legacy client_* values` (WARN) names the groups (phones, emails, locations, socials) that the kit shows from the old `client_*` options because Site details holds nothing for them; run `bin/deploy/site-details-migrate.php plan`, then `apply`, in the same session as the bump. Gone once migrated; absent for a kit without the fallback.
+
 ## 2026.11.24.2
 
 An INFO drift row for the global button system (WP-109, TPL-272). **Adopt:** every site with the next deploy workflow tag. Not Train-ready.
