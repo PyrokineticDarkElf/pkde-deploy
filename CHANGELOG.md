@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026.11.19.10
+
+**Hotfix, the December line (2026.11.19.9 plus only this): every symlink the deploy makes is relative.** 20i now blocks absolute symlinks on its shared platform (a package answers 403), and `activate-release.sh` made absolute ones (`current`, the release's `.env`, `uploads`, `ewww` and `.htaccess`) on every deploy. **Adopt:** every site on the December line, with its next deploy: bump the caller to this tag; the first activation repairs the links (they are re-made on every activation, a rollback included).
+- `activate-release.sh` makes all five links with `ln -r`, so `current` is `releases/<id>` and `.env` is `../../shared/.env`; a base given with a double or trailing slash is cleaned first; after the switch it warns about any absolute symlink left in the live release.
+- `check-artifact.sh` fails a build whose artifact holds an absolute symlink.
+- `drift-check.php` has a FAIL row "No absolute symlinks under deploy/<env>".
+- The activate-release test checks a double-slash base, a release left with absolute links, a rollback and a roll forward by name, and an absolute link carried in by an artifact.
+
 ## 2026.11.19.9
 
 The deploy step copies `activate-release.sh` with rsync over the shell connection instead of scp, on the December line: 2026.11.19.6 and this one change (scp speaks SFTP since OpenSSH 9 and failed on the server with "dest open: No such file or directory"). **Adopt:** the sites on the December train bump the workflow tag in their caller (`deploy.yml`, `audit.yml`) and `pkde/deploy` to 2026.11.19.9. It does not contain 2026.11.19.7, 2026.11.19.8 or anything later.

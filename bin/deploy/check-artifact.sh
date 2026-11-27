@@ -114,6 +114,13 @@ for p in "${required[@]}"; do
     fi
 done
 
+# No absolute symlink anywhere in the artifact: 20i blocks them (a package answers 403), and activate-release.sh makes its own links relative. A link the build
+# carried in (a path repository, a tool that writes one) would break the same way.
+while IFS= read -r l; do
+    echo "::error::artifact holds an absolute symlink: ${l#"$DIST"/} -> $(readlink "$l")"
+    fail=1
+done < <(find "$DIST" -type l -lname '/*' 2>/dev/null | sort | head -20)
+
 # Every .htaccess a plugin ships (Wordfence lib/, W3 Total Cache pub/ and ini/, ...) is that plugin's own access denial for its data and
 # include directories. The build tree has them; the artifact must too (an unanchored rsync exclude once dropped all of them: TCS-88).
 # Skipped when there is no web/app/plugins in the current directory (the check is run from the repo root in CI).

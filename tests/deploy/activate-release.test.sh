@@ -63,11 +63,11 @@ mkdir -p $BASE/shared; echo "WP_ENV=production" > $BASE/shared/.env
 mkrelease R1
 bash $S $BASE R1 5 >$T/s1.log 2>&1; rc=$?
 check "script exits 0" "[ $rc -eq 0 ]"
-check "current -> R1" "[ \"\$(readlink $BASE/current)\" = $BASE/releases/R1 ]"
+check "current -> R1" "[ \"\$(readlink -f $BASE/current)\" = $BASE/releases/R1 ]"
 check "shared dirs created: w3tc-config wflogs ewww uploads" "[ -d $BASE/shared/w3tc-config ] && [ -d $BASE/shared/wflogs ] && [ -d $BASE/shared/ewww ] && [ -d $BASE/shared/uploads ]"
-check "R1/web/app/ewww is a symlink to shared/ewww" "[ \"\$(readlink $BASE/releases/R1/web/app/ewww)\" = $BASE/shared/ewww ]"
+check "R1/web/app/ewww is a symlink to shared/ewww" "[ \"\$(readlink -f $BASE/releases/R1/web/app/ewww)\" = $BASE/shared/ewww ]"
 check ".htaccess seeded from .dist then both managed blocks appended" "grep -q 'BEGIN WordPress' $BASE/shared/.htaccess && grep -q 'BEGIN Site Hardening' $BASE/shared/.htaccess && head -1 $BASE/shared/.htaccess | grep -q '# dist'"
-check "release .htaccess is a symlink to shared" "[ \"\$(readlink $BASE/releases/R1/web/.htaccess)\" = $BASE/shared/.htaccess ]"
+check "release .htaccess is a symlink to shared" "[ \"\$(readlink -f $BASE/releases/R1/web/.htaccess)\" = $BASE/shared/.htaccess ]"
 check "per-release web/app/cache exists and is a real (non-shared) dir" "[ -d $BASE/releases/R1/web/app/cache ] && [ ! -L $BASE/releases/R1/web/app/cache ]"
 check "wp-cli invoked via php83 (noexec-safe)" "grep -q 'stub php83.*wp rewrite flush\|stub php83.*/bin/wp rewrite flush' $T/php83.log"
 check "never calls --hard" "! grep -q -- '--hard' $T/php83.log"
@@ -93,12 +93,12 @@ check "W3TC settings carried over byte-for-byte" "[ \"\$(cat $BASE/shared/w3tc-c
 check "wflogs seeded (attack-data, ips, rules, template, .htaccess)" "[ -f $BASE/shared/wflogs/attack-data.php ] && [ -f $BASE/shared/wflogs/ips.php ] && [ -f $BASE/shared/wflogs/rules.php ] && [ -f $BASE/shared/wflogs/template.php ] && [ -f $BASE/shared/wflogs/.htaccess ]"
 check "wflogs config*.php NOT copied (Wordfence regenerates them)" "! ls $BASE/shared/wflogs/config*.php >/dev/null 2>&1"
 check "ewww seeded (placeholder + binary)" "[ -f $BASE/shared/ewww/lazy/placeholder.png ] && [ -f $BASE/shared/ewww/jpegtran ]"
-check "R2 ewww is a symlink to shared" "[ \"\$(readlink $BASE/releases/R2/web/app/ewww)\" = $BASE/shared/ewww ]"
+check "R2 ewww is a symlink to shared" "[ \"\$(readlink -f $BASE/releases/R2/web/app/ewww)\" = $BASE/shared/ewww ]"
 check "advanced-cache.php drop-in carried into R2" "[ -f $BASE/releases/R2/web/app/advanced-cache.php ]"
 check "R2 has no auto_prepend_file in its .user.ini (so no dangling path; the file itself only carries the opcache.revalidate_path block, TPL-172)" "! grep -q auto_prepend_file $BASE/releases/R2/web/.user.ini 2>/dev/null"
 check "runtime-added .htaccess rule preserved" "grep -q USER-ADDED-BLOCK $BASE/shared/.htaccess"
 check "no leftover *.seeding.* temp dirs" "! ls -d $BASE/shared/*.seeding.* >/dev/null 2>&1"
-check "current -> R2" "[ \"\$(readlink $BASE/current)\" = $BASE/releases/R2 ]"
+check "current -> R2" "[ \"\$(readlink -f $BASE/current)\" = $BASE/releases/R2 ]"
 
 echo "=== Scenario 3: next deploy R3 — shared state must NOT be re-seeded or overwritten ==="
 echo "pgcache.enabled=CHANGED-IN-WPADMIN" > $BASE/shared/w3tc-config/master.php        # admin saves settings in wp-admin on R2
@@ -122,7 +122,7 @@ check "Upload Cache: 30 days for uploads, one year immutable for ?ver= assets" "
 echo "=== Scenario 4: ROLLBACK to R1 (an older, pre-change release with real dirs) ==="
 bash $S $BASE R1 5 >$T/s4.log 2>&1; rc=$?
 check "script exits 0" "[ $rc -eq 0 ]"
-check "current -> R1" "[ \"\$(readlink $BASE/current)\" = $BASE/releases/R1 ]"
+check "current -> R1" "[ \"\$(readlink -f $BASE/current)\" = $BASE/releases/R1 ]"
 check "shared W3TC state untouched by rollback" "[ \"\$(cat $BASE/shared/w3tc-config/master.php)\" = 'pgcache.enabled=CHANGED-IN-WPADMIN' ]"
 
 echo "=== Scenario 5: re-running the SAME release is harmless ==="
@@ -134,10 +134,10 @@ check "only 3 releases remain" "[ \$(ls $BASE/releases | wc -l) -eq 3 ]"
 check "shared dir never pruned" "[ -d $BASE/shared/w3tc-config ] && [ -f $BASE/shared/.env ]"
 
 echo "=== Scenario 7: missing .env aborts BEFORE touching anything ==="
-mv $BASE/shared/.env $BASE/shared/.env.bak; before=$(readlink $BASE/current); mkrelease R8
+mv $BASE/shared/.env $BASE/shared/.env.bak; before=$(readlink -f $BASE/current); mkrelease R8
 bash $S $BASE R8 5 >$T/s7.log 2>&1; rc=$?
 check "exits non-zero" "[ $rc -ne 0 ]"
-check "current unchanged" "[ \"\$(readlink $BASE/current)\" = \"$before\" ]"
+check "current unchanged" "[ \"\$(readlink -f $BASE/current)\" = \"$before\" ]"
 mv $BASE/shared/.env.bak $BASE/shared/.env
 
 echo "=== Scenario 8: WP-CLI path — WP_CLI wins, else ~/bin/wp, else /usr/local/bin/wp ==="
@@ -209,7 +209,7 @@ check "reports the web server serves the new release" "grep -q 'Web opcache rese
 
 : > $T/curl.log; echo fail > $T/curl-mode; mkrelease R21
 bash $S $BASE R21 5 >$T/s9b.log 2>&1; rc=$?
-check "request failure: deploy still exits 0 and current -> R21" "[ $rc -eq 0 ] && [ \"\$(readlink $BASE/current)\" = $BASE/releases/R21 ]"
+check "request failure: deploy still exits 0 and current -> R21" "[ $rc -eq 0 ] && [ \"\$(readlink -f $BASE/current)\" = $BASE/releases/R21 ]"
 check "request failure: loud warning" "grep -q 'could not request the opcache reset' $T/s9b.log && grep -q 'PREVIOUS release' $T/s9b.log"
 check "request failure: the file is still removed" "[ -z \"\$(ls $BASE/releases/R21/web/zz-opcache-*.php 2>/dev/null)\" ]"
 
@@ -228,7 +228,7 @@ check "hardening probe: requests an uploads PHP file it wrote, the theme functio
 
 : > $T/curl.log; echo notfound > $T/curl-mode; mkrelease R25
 OPCACHE_RETRY_INTERVAL=0 OPCACHE_RETRY_ATTEMPTS=4 bash $S $BASE R25 5 >$T/s9f.log 2>&1; rc=$?
-check "permanent 404: exit 0, current -> R25, one warning after the tries" "[ $rc -eq 0 ] && [ \"\$(readlink $BASE/current)\" = $BASE/releases/R25 ] && grep -q 'still answered 404 for the probe after 4 tries' $T/s9f.log && grep -q 'PREVIOUS release' $T/s9f.log"
+check "permanent 404: exit 0, current -> R25, one warning after the tries" "[ $rc -eq 0 ] && [ \"\$(readlink -f $BASE/current)\" = $BASE/releases/R25 ] && grep -q 'still answered 404 for the probe after 4 tries' $T/s9f.log && grep -q 'PREVIOUS release' $T/s9f.log"
 check "permanent 404: exactly 4 requests" "[ \$(grep -c '^https.*zz-opcache' $T/curl.log) -eq 4 ]"
 check "permanent 404: the file is removed" "[ -z \"\$(ls $BASE/releases/R25/web/zz-opcache-*.php 2>/dev/null)\" ]"
 
@@ -273,7 +273,7 @@ check "fresh render: the page was requested with a one-off query string" "grep -
 : > $T/curl.log; mkrelease R34; mkmanifest R34 app-NEW.css; echo app-OLD.css > $T/page-css
 bash $S $BASE R34 5 >$T/s9i2.log 2>&1; rc=$?
 check "stale render: the run ends with exit 3" "[ $rc -eq 3 ]"
-check "stale render: the release stays active" "[ \"\$(readlink $BASE/current)\" = $BASE/releases/R34 ]"
+check "stale render: the release stays active" "[ \"\$(readlink -f $BASE/current)\" = $BASE/releases/R34 ]"
 check "stale render: STALE RELEASE block names both stylesheets" "grep -q 'STALE RELEASE: an uncached page of https://example.test still links app-OLD.css, but release R34 names app-NEW.css' $T/s9i2.log"
 check "stale render: the reset was requested again before giving up (3 times)" "[ \$(grep -c 'again=' $T/curl.log) -eq 3 ]"
 check "stale render: four page requests" "[ \$(grep -c 'pkde-fresh-render' $T/curl.log) -eq 4 ]"
@@ -371,7 +371,7 @@ rm -f $T/php83-hang
 check "exits 0 although both flushes hung" "[ $rc -eq 0 ]"
 check "finished in well under the stub's 60s hang (took ${took}s)" "[ $took -lt 40 ]"
 check "WARN names each timed-out flush" "grep -q 'WARN: wp cache flush timed out after 2s' $T/s11.log && grep -q 'WARN: wp rewrite flush timed out after 2s' $T/s11.log"
-check "the release is live and the Asset Cache block was re-asserted" "[ \"\$(readlink $BASE/current)\" = $BASE/releases/R44 ] && grep -q '# BEGIN Asset Cache' $BASE/shared/.htaccess"
+check "the release is live and the Asset Cache block was re-asserted" "[ \"\$(readlink -f $BASE/current)\" = $BASE/releases/R44 ] && grep -q '# BEGIN Asset Cache' $BASE/shared/.htaccess"
 check "the prune ran (3 releases kept)" "[ \$(ls $BASE/releases | wc -l) -eq 3 ]"
 check "step lines print in order: htaccess, prune, then the flushes" "[ \$(grep -n 'Checking the shared .htaccess blocks\|pruning old releases\|Running: wp cache flush\|Running: wp rewrite flush' $T/s11.log | cut -d: -f1 | tr '\n' ' ' | awk '{print (\$1<\$2 && \$2<\$3 && \$3<\$4) ? \"ordered\" : \"wrong\"}') = ordered ]"
 : > $T/php83.log; mkrelease R45
@@ -401,7 +401,7 @@ check "an odd WPLANG value is ignored with a warning, nothing runs" "! grep -q '
 # a language command that hangs is stopped by WP_CLI_TIMEOUT: only a WARN, the deploy still exits 0
 touch $T/php83-hang-lang; mkrelease L5; : > $T/php83.log; start=$(date +%s)
 PKDE_TEST_WPLANG=de_DE WP_CLI_TIMEOUT=2 bash $S $BASE L5 5 >$T/s12d.log 2>&1; rc=$?; took=$(( $(date +%s) - start )); rm -f $T/php83-hang-lang
-check "a hung language command: exit 0, release live, WARN, finished in ${took}s (<60)" "[ $rc -eq 0 ] && [ \"\$(readlink $BASE/current)\" = $BASE/releases/L5 ] && grep -q 'WARN: wp language core install de_DE timed out after 2s' $T/s12d.log && [ $took -lt 60 ]"
+check "a hung language command: exit 0, release live, WARN, finished in ${took}s (<60)" "[ $rc -eq 0 ] && [ \"\$(readlink -f $BASE/current)\" = $BASE/releases/L5 ] && grep -q 'WARN: wp language core install de_DE timed out after 2s' $T/s12d.log && [ $took -lt 60 ]"
 # a failing language command: the WARN carries the first line of WP-CLI's error, the deploy still exits 0
 touch $T/php83-fail-lang; mkrelease L6; : > $T/php83.log
 PKDE_TEST_WPLANG=en_GB bash $S $BASE L6 5 >$T/s12e.log 2>&1; rc=$?; rm -f $T/php83-fail-lang
@@ -429,7 +429,7 @@ CACHE_WARM_LIMIT='5;rm -rf /' bash $S $BASE W5 5 >$T/s13e.log 2>&1
 check "an odd CACHE_WARM_LIMIT warns and primes nothing" "! grep -q 'pgcache_prime' $T/php83.log && grep -q 'CACHE_WARM_LIMIT must be a number' $T/s13e.log"
 touch $T/w3tc-prime-hang; mkrelease W6; : > $T/php83.log; start=$(date +%s)
 WP_CLI_TIMEOUT=100 CACHE_WARM_TIMEOUT=2 bash $S $BASE W6 5 >$T/s13f.log 2>&1; rc=$?; took=$(( $(date +%s) - start )); rm -f $T/w3tc-prime-hang
-check "a priming that hangs is stopped by CACHE_WARM_TIMEOUT (not WP_CLI_TIMEOUT): exit 0, release live, WARN, ${took}s (<60)" "[ $rc -eq 0 ] && [ \"\$(readlink $BASE/current)\" = $BASE/releases/W6 ] && grep -q 'WARN: wp w3-total-cache pgcache_prime.*timed out after 2s' $T/s13f.log && [ $took -lt 60 ]"
+check "a priming that hangs is stopped by CACHE_WARM_TIMEOUT (not WP_CLI_TIMEOUT): exit 0, release live, WARN, ${took}s (<60)" "[ $rc -eq 0 ] && [ \"\$(readlink -f $BASE/current)\" = $BASE/releases/W6 ] && grep -q 'WARN: wp w3-total-cache pgcache_prime.*timed out after 2s' $T/s13f.log && [ $took -lt 60 ]"
 # a slow priming (3 s) is NOT cut off by a short WP_CLI_TIMEOUT: it has its own, longer bound (uncached pages take ~4 s each on 20i)
 touch $T/w3tc-prime-slow; mkrelease W7; : > $T/php83.log
 WP_CLI_TIMEOUT=1 CACHE_WARM_TIMEOUT=30 bash $S $BASE W7 5 >$T/s13g.log 2>&1; rm -f $T/w3tc-prime-slow
@@ -447,7 +447,7 @@ OLD_BASE=$BASE; BASE=$T/deploy/split; mkdir -p $BASE/shared; cp $OLD_BASE/shared
 for r in A1 A2 A3 A4 A5 A6; do mkrelease $r; touch -d "2020-01-0${r#A} 00:00" $BASE/releases/$r 2>/dev/null || true; done
 : > $T/php83.log
 bash $S $BASE A6 3 activate >$T/s14a.log 2>&1; rc=$?
-check "activate: exit 0, the release is live, and no WP-CLI command ran" "[ $rc -eq 0 ] && [ \"\$(readlink $BASE/current)\" = $BASE/releases/A6 ] && [ ! -s $T/php83.log ] && ! grep -q 'Running: wp' $T/s14a.log"
+check "activate: exit 0, the release is live, and no WP-CLI command ran" "[ $rc -eq 0 ] && [ \"\$(readlink -f $BASE/current)\" = $BASE/releases/A6 ] && [ ! -s $T/php83.log ] && ! grep -q 'Running: wp' $T/s14a.log"
 check "activate: says the post part is the next exec and prints its own duration" "grep -q 'the post part' $T/s14a.log && grep -q \"Exec 'activate' finished after [0-9]*s\" $T/s14a.log"
 check "activate: the old releases were moved to .trash, not deleted in line (3 kept)" "[ \$(ls $BASE/releases | wc -l) -eq 3 ] && grep -q 'moved to .trash' $T/s14a.log"
 check "activate does not start the clean-up (that is the post part's last step)" "! grep -q 'Deleting the pruned releases' $T/s14a.log"
@@ -586,20 +586,20 @@ check "no current at all: exits 1 with the reason, nothing created" "[ $rc -eq 1
 for n in 20261101000000 20261102000000 20261103000000 20261104000000; do mkrelease $n; done
 rm -rf $BASE/releases/20261103000000/vendor   # a half-copied release in the middle
 for n in 20261101000000 20261102000000 20261104000000; do bash $S $BASE $n 9 >/dev/null 2>&1; done
-check "setup: current is the newest" "[ \"\$(readlink $BASE/current)\" = $BASE/releases/20261104000000 ]"
+check "setup: current is the newest" "[ \"\$(readlink -f $BASE/current)\" = $BASE/releases/20261104000000 ]"
 : > $T/curl.log
 bash $S $BASE previous 9 >$T/s19a.log 2>&1; rc=$?
 check "previous: exits 0" "[ $rc -eq 0 ]"
-check "previous: current -> the complete release before it (the half-copied one is skipped)" "[ \"\$(readlink $BASE/current)\" = $BASE/releases/20261102000000 ]"
+check "previous: current -> the complete release before it (the half-copied one is skipped)" "[ \"\$(readlink -f $BASE/current)\" = $BASE/releases/20261102000000 ]"
 check "previous: says what it did, code only" "grep -q 'Rollback: current is 20261104000000; activating the previous release 20261102000000 (code only' $T/s19a.log"
 check "previous: the web opcache is reset like an activation" "grep -q 'Web opcache reset; the web server serves release 20261102000000' $T/s19a.log && grep -Eq '^https://example.test/zz-opcache-[0-9a-f]{32}\\.php\$' $T/curl.log"
 check "previous: the shared blocks are asserted again" "grep -q 'BEGIN Security Headers' $BASE/shared/.htaccess"
 bash $S $BASE previous 9 >$T/s19b.log 2>&1
-check "previous again: goes one further back" "[ \"\$(readlink $BASE/current)\" = $BASE/releases/20261101000000 ]"
+check "previous again: goes one further back" "[ \"\$(readlink -f $BASE/current)\" = $BASE/releases/20261101000000 ]"
 bash $S $BASE previous 9 >$T/s19c.log 2>&1; rc=$?
-check "nothing older left: exits 1 and current is unchanged" "[ $rc -eq 1 ] && grep -q 'no complete release older' $T/s19c.log && [ \"\$(readlink $BASE/current)\" = $BASE/releases/20261101000000 ]"
+check "nothing older left: exits 1 and current is unchanged" "[ $rc -eq 1 ] && grep -q 'no complete release older' $T/s19c.log && [ \"\$(readlink -f $BASE/current)\" = $BASE/releases/20261101000000 ]"
 bash $S $BASE 20261104000000 9 >/dev/null 2>&1
-check "rolling forward again by name still works" "[ \"\$(readlink $BASE/current)\" = $BASE/releases/20261104000000 ]"
+check "rolling forward again by name still works" "[ \"\$(readlink -f $BASE/current)\" = $BASE/releases/20261104000000 ]"
 BASE=$OLD_BASE
 
 echo "=== Scenario 20: the fresh render check behind the staging gate, a 5xx home page, and the User INI Guard (TPL-191, WP-85) ==="
@@ -633,11 +633,40 @@ check "200 with credentials: the check goes on (this stub's page links no app st
 printf '503' > $T/page-status; mkrelease G7; mkmanifest G7 app-NEW.css
 bash $S $BASE G7 5 >$T/s20g.log 2>&1; rc=$?
 check "503 home page: BROKEN SITE, the run ends red (exit 3) and names the rollback command" "[ $rc -eq 3 ] && grep -q 'BROKEN SITE: the home page of https://example.test answers HTTP 503' $T/s20g.log && grep -q 'activate-release.sh $BASE previous' $T/s20g.log && grep -q 'answers HTTP 503 (see BROKEN SITE above). Exiting 3' $T/s20g.log"
-check "503: the release is live all the same" "[ \"\$(readlink $BASE/current)\" = $BASE/releases/G7 ]"
+check "503: the release is live all the same" "[ \"\$(readlink -f $BASE/current)\" = $BASE/releases/G7 ]"
 printf 'PKDE_FRESH_RENDER_CHECK=warn\n' >> $BASE/shared/.env; mkrelease G8; mkmanifest G8 app-NEW.css
 bash $S $BASE G8 5 >$T/s20h.log 2>&1; rc=$?
 check "503 with PKDE_FRESH_RENDER_CHECK=warn: warns, exit 0" "[ $rc -eq 0 ] && grep -q 'BROKEN SITE' $T/s20h.log"
 rm -f $T/page-status
+BASE=$OLD_BASE
+
+echo "=== Scenario 22: every symlink is RELATIVE (20i blocks absolute ones): a double-slash base, a release left with absolute links, a rollback ==="
+OLD_BASE=$BASE; BASE=$T/deploy/relative; mkdir -p $BASE/shared; echo "WP_ENV=production" > $BASE/shared/.env
+abslinks() { find "$BASE" -type l -lname '/*' 2>/dev/null; }
+# a site deployed by the older script: a current and every shared link pointing at an absolute path
+mkrelease O1
+mkdir -p $BASE/shared/uploads $BASE/shared/ewww; echo "# dist" > $BASE/shared/.htaccess; mkdir -p $BASE/releases/O1/web/app
+ln -s $BASE/shared/.env $BASE/releases/O1/.env; ln -s $BASE/shared/uploads $BASE/releases/O1/web/app/uploads; ln -s $BASE/shared/ewww $BASE/releases/O1/web/app/ewww
+ln -s $BASE/shared/.htaccess $BASE/releases/O1/web/.htaccess; ln -sfn $BASE/releases/O1 $BASE/current
+check "the old layout really has absolute links (the test's starting point)" "[ \$(abslinks | wc -l) -ge 5 ]"
+mkrelease O2
+bash $S "$T/deploy//relative/" O2 5 >$T/s22a.log 2>&1; rc=$?
+check "a base given with a double slash and a trailing slash works" "[ $rc -eq 0 ]"
+check "current is the relative link releases/O2" "[ \"\$(readlink $BASE/current)\" = releases/O2 ]"
+check ".env is ../../shared/.env" "[ \"\$(readlink $BASE/releases/O2/.env)\" = ../../shared/.env ]"
+check "uploads, ewww and .htaccess are relative" "[ \"\$(readlink $BASE/releases/O2/web/app/uploads)\" = ../../../../shared/uploads ] && [ \"\$(readlink $BASE/releases/O2/web/app/ewww)\" = ../../../../shared/ewww ] && [ \"\$(readlink $BASE/releases/O2/web/.htaccess)\" = ../../../shared/.htaccess ]"
+check "the links resolve (readlink -f lands in shared/)" "[ \"\$(readlink -f $BASE/current/.env)\" = $BASE/shared/.env ] && [ -d $BASE/current/web/app/uploads/. ]"
+check "no target of any link contains a double slash" "! find $BASE -type l -printf '%l\\n' | grep -q '//'"
+check "the previous release still holds ITS old absolute links until it is activated again" "[ \$(find $BASE/releases/O1 -type l -lname '/*' | wc -l) -ge 4 ]"
+check "no warning about absolute links for the live release" "! grep -q 'absolute symlinks' $T/s22a.log"
+bash $S $BASE previous 5 >$T/s22b.log 2>&1; rc=$?
+check "a rollback to the release with absolute links exits 0 and makes its links relative" "[ $rc -eq 0 ] && [ \"\$(readlink $BASE/current)\" = releases/O1 ] && [ \"\$(readlink $BASE/releases/O1/.env)\" = ../../shared/.env ] && [ \"\$(readlink $BASE/releases/O1/web/app/uploads)\" = ../../../../shared/uploads ]"
+check "after the rollback the live release has no absolute link" "[ \$(find $BASE/current/ -type l -lname '/*' | wc -l) -eq 0 ]"
+bash $S $BASE O2 5 >$T/s22c.log 2>&1
+check "rolling forward by name works with relative links" "[ \"\$(readlink -f $BASE/current)\" = $BASE/releases/O2 ]"
+mkrelease O3; ln -s /etc/hostname $BASE/releases/O3/web/app/stray-absolute-link
+bash $S $BASE O3 5 >$T/s22d.log 2>&1
+check "an absolute link that came in the artifact is reported (WARN, the release stays live)" "grep -q 'absolute symlinks in the release' $T/s22d.log && grep -q 'stray-absolute-link' $T/s22d.log && [ \"\$(readlink -f $BASE/current)\" = $BASE/releases/O3 ]"
 BASE=$OLD_BASE
 
 echo; echo "RESULT: $pass passed, $fail failed"; exit $fail

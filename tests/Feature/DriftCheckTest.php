@@ -791,3 +791,34 @@ it('reports which CF7 forms carry a lookup key, and fails only a key a theme fil
     $facts['cf7_active'] = false;
     expect(pkdeStatuses($facts))->not->toHaveKey('CF7 forms with a lookup key (_pkde_form_key)');
 });
+
+it('fails when a symlink under deploy/<env> points at an absolute path, and passes when every link is relative', function () {
+    $base = sys_get_temp_dir() . '/pkde-drift-links-' . bin2hex(random_bytes(4));
+    mkdir("$base/releases/R1/web/app", 0777, true);
+    mkdir("$base/releases/R1/web/wp", 0777, true);
+    mkdir("$base/releases/R1/vendor/x", 0777, true);
+    mkdir("$base/shared/uploads", 0777, true);
+    file_put_contents("$base/shared/.env", "WP_ENV=production\n");
+    symlink('releases/R1', "$base/current");
+    symlink('../shared/.env', "$base/releases/R1/.env");
+    symlink('../../../shared/uploads', "$base/releases/R1/web/app/uploads");
+    symlink('/somewhere/else', "$base/releases/R1/vendor/x/ignored-in-vendor");
+
+    expect(pkde_drift_absolute_symlinks($base))->toBe([])
+        ->and(pkde_drift_deploy_base("$base/releases/R1/web/wp/"))->toBe(realpath($base));
+
+    symlink("$base/shared/.env", "$base/releases/R1/web/.htaccess");
+    unlink("$base/current");
+    symlink("$base/releases/R1", "$base/current");
+    $found = pkde_drift_absolute_symlinks($base);
+
+    expect($found)->toHaveCount(2)->and($found[0])->toStartWith('current -> /')->and($found[1])->toStartWith('releases/R1/web/.htaccess -> /');
+
+    $facts = pkdeGoodFacts();
+    $facts['absolute_symlinks'] = $found;
+    expect(pkdeStatuses($facts)['No absolute symlinks under deploy/<env> (20i blocks them)'])->toBe('FAIL');
+    $facts['absolute_symlinks'] = [];
+    expect(pkdeStatuses($facts)['No absolute symlinks under deploy/<env> (20i blocks them)'])->toBe('PASS');
+    $facts['absolute_symlinks'] = null;
+    expect(pkdeStatuses($facts))->not->toHaveKey('No absolute symlinks under deploy/<env> (20i blocks them)');
+});
