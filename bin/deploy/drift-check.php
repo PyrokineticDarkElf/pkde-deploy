@@ -491,6 +491,11 @@ function pkde_drift_evaluate(array $f): array
         $add($ok ? 'PASS' : ($devSkip && $dev ? 'SKIP' : 'FAIL'), $check, $ok ? '' : $detail);
     };
 
+    // No absolute symlinks under deploy/<env>: 20i blocks them. Only when the facts carry the key (a layout with releases/<id> under a base; null elsewhere).
+    if (is_array($f['absolute_symlinks'] ?? null)) {
+        $cmp('No absolute symlinks under deploy/<env> (20i blocks them)', $f['absolute_symlinks'] === [], 'absolute: ' . implode('; ', array_slice($f['absolute_symlinks'], 0, 6)) . ': activate the release again (activate-release.sh, pkde-deploy 2026.11.19.10, 2026.11.27.1 or later make every link relative)');
+    }
+
     // The environment as .env declares it (bp): a .env split between environments (a production WP_ENV with a staging
     // DISALLOW_INDEXING, or a staging file copied to production) looks clean row by row. Only when the facts carry WP_ENV.
     if (array_key_exists('wp_env', $f)) {
@@ -1040,6 +1045,71 @@ function pkde_drift_waf_prepend_facts(): array
 }
 
 /**
+ * The symlinks under a deploy base (<home>/deploy/<env>) that point at an ABSOLUTE path: 20i blocks them (a package answers 403), so every link the deploy makes is relative.
+ * Looks at `current`, the live release (five folders deep, leaving out vendor/, node_modules/ and the WordPress core folder) and shared/ (two deep). Read only; links are not followed.
+ *
+ * @return list<string> "<path relative to the base> -> <target>" for each absolute link
+ */
+function pkde_drift_absolute_symlinks(string $base): array
+{
+    $base = realpath($base) ?: rtrim($base, '/'); // paths below are shown relative to the real base
+    $found = [];
+    $scan = function (string $dir, int $depth) use (&$scan, &$found, $base): void {
+        $entries = @scandir($dir) ?: [];
+
+        foreach ($entries as $name) {
+            if ($name === '.' || $name === '..') {
+                continue;
+            }
+
+            $path = $dir . '/' . $name;
+
+            if (is_link($path)) {
+                $target = (string) readlink($path);
+
+                if (str_starts_with($target, '/')) {
+                    $found[] = ltrim(substr($path, strlen($base)), '/') . ' -> ' . $target;
+                }
+
+                continue;
+            }
+
+            if ($depth > 1 && is_dir($path) && ! in_array($name, ['vendor', 'node_modules', 'wp'], true)) {
+                $scan($path, $depth - 1);
+            }
+        }
+    };
+
+    $base = rtrim($base, '/');
+    $current = $base . '/current';
+
+    if (is_link($current) && str_starts_with((string) readlink($current), '/')) {
+        $found[] = 'current -> ' . readlink($current);
+    }
+
+    $live = is_link($current) ? realpath($current) : false;
+
+    if ($live !== false) {
+        $scan($live, 5);
+    }
+
+    if (is_dir($base . '/shared')) {
+        $scan($base . '/shared', 2);
+    }
+
+    return $found;
+}
+
+/** The deploy base the running site lives under (<base>/releases/<id>/web/wp/), or null on a machine that is not laid out that way (local development). */
+function pkde_drift_deploy_base(string $abspath): ?string
+{
+    $core = realpath(rtrim($abspath, '/'));
+    $release = $core === false ? false : dirname($core, 2);
+
+    return $release !== false && basename(dirname($release)) === 'releases' ? dirname($release, 2) : null;
+}
+
+/**
  * The shop filter declaration as the kit resolved it: whether the site declares its groups, the groups that resolved (sources, in the sidebar's order) and the
  * declared sources that did not. Null when WooCommerce or a kit with the declaration is absent. Read only.
  *
@@ -1244,6 +1314,7 @@ function pkde_drift_collect(): array
     return [
         'env' => wp_get_environment_type(),
         'wp_env' => $const('WP_ENV'),
+        'absolute_symlinks' => pkde_drift_deploy_base(ABSPATH) === null ? null : pkde_drift_absolute_symlinks((string) pkde_drift_deploy_base(ABSPATH)),
         'disallow_indexing' => defined('DISALLOW_INDEXING') && DISALLOW_INDEXING,
         'staging_mail_to' => $const('STAGING_MAIL_TO') !== '' || trim((string) getenv('STAGING_MAIL_TO')) !== '',
         'admin_email' => (string) get_option('admin_email'),

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026.11.27.1
+
+**Hotfix: every symlink the deploy makes is relative.** 20i now blocks absolute symlinks on its shared platform (a package answers 403), and `activate-release.sh` made absolute ones (`current`, the release's `.env`, `uploads`, `ewww` and `.htaccess`) on every deploy. **Adopt:** every site, with its next deploy: bump the caller to this tag; the first activation repairs the links (they are re-made on every activation, a rollback included).
+- `activate-release.sh` makes all five links with `ln -r`, so `current` is `releases/<id>` and `.env` is `../shared/.env`; a base given with a double or trailing slash is cleaned first (the `current` target once held `//`); after the switch it warns about any absolute symlink left in the live release.
+- `check-artifact.sh` fails a build whose artifact holds an absolute symlink.
+- `drift-check.php` has a FAIL row "No absolute symlinks under deploy/<env>" (current, the live release five folders deep, shared/).
+- The activate-release test checks a double-slash base, a release left with absolute links, a rollback and a roll forward by name, and an absolute link carried in by an artifact.
+
 ## 2026.11.27
 
 The deploy step copies `activate-release.sh` with rsync over the shell connection instead of scp (scp speaks SFTP since OpenSSH 9 and failed on the server with "dest open: No such file or directory" while mkdir and rsync to the same folder worked). **Adopt:** a site takes it by bumping the workflow tag in its caller (`deploy.yml`, and `audit.yml`) and `pkde/deploy` in `composer.json`.

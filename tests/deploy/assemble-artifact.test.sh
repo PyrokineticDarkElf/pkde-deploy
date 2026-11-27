@@ -51,6 +51,13 @@ check ".htaccess.dist is in the artifact" "$([ -f "$site/dist/web/.htaccess.dist
 check "the theme folder READMEs are not in the artifact" "$(ls "$site/dist/web/app/themes/sage/resources/views/README.md" "$site/dist/web/app/themes/sage/resources/views/vendor/pkde-kit/README.md" "$site/dist/web/app/themes/sage/app/README.md" 2>/dev/null | wc -l | tr -d ' ')" 0
 
 (cd "$site" && bash "$REPO_ROOT/bin/deploy/check-artifact.sh" dist >/dev/null 2>&1); check "check-artifact passes on a complete artifact" "$?" 0
+ln -s /etc/hostname "$site/dist/web/app/stray-absolute"
+(cd "$site" && bash "$REPO_ROOT/bin/deploy/check-artifact.sh" dist >"$T/abslink.out" 2>&1); check "check-artifact fails on an absolute symlink in the artifact" "$?" 1
+check "and names the link" "$(grep -q 'stray-absolute' "$T/abslink.out" && echo yes || echo no)" yes
+rm "$site/dist/web/app/stray-absolute"
+ln -s ../uploads "$site/dist/web/app/relative-ok"
+(cd "$site" && bash "$REPO_ROOT/bin/deploy/check-artifact.sh" dist >/dev/null 2>&1); check "a relative symlink in the artifact is fine" "$?" 0
+rm "$site/dist/web/app/relative-ok"
 
 rm "$site/dist/web/app/plugins/wordfence/lib/.htaccess"
 out=$(cd "$site" && bash "$REPO_ROOT/bin/deploy/check-artifact.sh" dist 2>&1); status=$?
