@@ -134,7 +134,7 @@ check "only 3 releases remain" "[ \$(ls $BASE/releases | wc -l) -eq 3 ]"
 check "shared dir never pruned" "[ -d $BASE/shared/w3tc-config ] && [ -f $BASE/shared/.env ]"
 
 echo "=== Scenario 7: missing .env aborts BEFORE touching anything ==="
-mv $BASE/shared/.env $BASE/shared/.env.bak; before=$(readlink $BASE/current); mkrelease R8
+mv $BASE/shared/.env $BASE/shared/.env.bak; before=$(readlink -f $BASE/current); mkrelease R8
 bash $S $BASE R8 5 >$T/s7.log 2>&1; rc=$?
 check "exits non-zero" "[ $rc -ne 0 ]"
 check "current unchanged" "[ \"\$(readlink -f $BASE/current)\" = \"$before\" ]"
@@ -675,14 +675,14 @@ mkrelease O2
 bash $S "$T/deploy//relative/" O2 5 >$T/s22a.log 2>&1; rc=$?
 check "a base given with a double slash and a trailing slash works" "[ $rc -eq 0 ]"
 check "current is the relative link releases/O2" "[ \"\$(readlink $BASE/current)\" = releases/O2 ]"
-check ".env is ../shared/.env" "[ \"\$(readlink $BASE/releases/O2/.env)\" = ../shared/.env ]"
-check "uploads, ewww and .htaccess are relative" "[ \"\$(readlink $BASE/releases/O2/web/app/uploads)\" = ../../../shared/uploads ] && [ \"\$(readlink $BASE/releases/O2/web/app/ewww)\" = ../../../shared/ewww ] && [ \"\$(readlink $BASE/releases/O2/web/.htaccess)\" = ../../shared/.htaccess ]"
+check ".env is ../../shared/.env" "[ \"\$(readlink $BASE/releases/O2/.env)\" = ../../shared/.env ]"
+check "uploads, ewww and .htaccess are relative" "[ \"\$(readlink $BASE/releases/O2/web/app/uploads)\" = ../../../../shared/uploads ] && [ \"\$(readlink $BASE/releases/O2/web/app/ewww)\" = ../../../../shared/ewww ] && [ \"\$(readlink $BASE/releases/O2/web/.htaccess)\" = ../../../shared/.htaccess ]"
 check "the links resolve (readlink -f lands in shared/)" "[ \"\$(readlink -f $BASE/current/.env)\" = $BASE/shared/.env ] && [ -d $BASE/current/web/app/uploads/. ]"
 check "no target of any link contains a double slash" "! find $BASE -type l -printf '%l\\n' | grep -q '//'"
 check "the previous release still holds ITS old absolute links until it is activated again" "[ \$(find $BASE/releases/O1 -type l -lname '/*' | wc -l) -ge 4 ]"
 check "no warning about absolute links for the live release" "! grep -q 'absolute symlinks' $T/s22a.log"
 bash $S $BASE previous 5 >$T/s22b.log 2>&1; rc=$?
-check "a rollback to the release with absolute links exits 0 and makes its links relative" "[ $rc -eq 0 ] && [ \"\$(readlink $BASE/current)\" = releases/O1 ] && [ \"\$(readlink $BASE/releases/O1/.env)\" = ../shared/.env ] && [ \"\$(readlink $BASE/releases/O1/web/app/uploads)\" = ../../../shared/uploads ]"
+check "a rollback to the release with absolute links exits 0 and makes its links relative" "[ $rc -eq 0 ] && [ \"\$(readlink $BASE/current)\" = releases/O1 ] && [ \"\$(readlink $BASE/releases/O1/.env)\" = ../../shared/.env ] && [ \"\$(readlink $BASE/releases/O1/web/app/uploads)\" = ../../../../shared/uploads ]"
 check "after the rollback the live release has no absolute link" "[ \$(find $BASE/current/ -type l -lname '/*' | wc -l) -eq 0 ]"
 bash $S $BASE O2 5 >$T/s22c.log 2>&1
 check "rolling forward by name works with relative links" "[ \"\$(readlink -f $BASE/current)\" = $BASE/releases/O2 ]"
