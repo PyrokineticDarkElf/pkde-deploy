@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The pure parts of bin/deploy/apply-pages.php (from bb's config/content/apply-pages.php, BB-56): mapping the pictures of a page's blocks to attachments by file name, and
+ * The pure parts of bin/deploy/apply-pages.php (from bb's config/content/apply-pages.php): mapping the pictures of a page's blocks to attachments by file name, and
  * the placeholders a page file may hold. No WordPress call is made here except through the callables the caller passes, so Pest tests it.
  */
 
@@ -80,7 +80,7 @@ function pkde_pages_faq_group_slugs(string $content): array
     return array_values(array_unique(array_map('strtolower', $m[1])));
 }
 
-/** The blocks a legal document may hold (the platform legal module's list, WP-104); a file in content/legal/ with any other block is refused. */
+/** The blocks a legal document may hold (the platform legal module's list); a file in content/legal/ with any other block is refused. */
 const PKDE_PAGES_LEGAL_BLOCKS = ['core/heading', 'core/paragraph', 'core/list', 'core/list-item', 'core/table', 'core/quote', 'core/details', 'core/separator', 'core/missing'];
 
 /**

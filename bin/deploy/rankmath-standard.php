@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The template's Rank Math baseline (WP-91, T-2/T-3, B-05, B-08, B-11), in one place: bin/deploy/rankmath-baseline.php writes it (bin/setup runs it for a new
+ * The template's Rank Math baseline (T-2/T-3, B-05, B-08, B-11), in one place: bin/deploy/rankmath-baseline.php writes it (bin/setup runs it for a new
  * site) and bin/deploy/drift-check.php checks it. Pure functions, no WordPress needed (the Pest tests load this file). Every value stays editable in
  * wp-admin (Rank Math > Titles & Meta): the baseline is where a site STARTS, and the drift check tells an existing site what differs.
  */
@@ -45,7 +45,7 @@ function pkde_rankmath_clean_title(string $template): string
  * @return array<string, mixed> only the keys whose value differs from the current one
  */
 /**
- * The parts of the baseline a site may apply on its own (TPL-201, WP-99 B): titles (the title templates, without "Archives" and with the site name once),
+ * The parts of the baseline a site may apply on its own: titles (the title templates, without "Archives" and with the site name once),
  * schema (the default rich snippet of pages, posts and products) and share-image (the default share image). Everything else (company, name, logo, archive
  * descriptions) is applied only with no part named.
  */

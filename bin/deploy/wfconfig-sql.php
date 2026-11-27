@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Wordfence's own settings table read and written with plain SQL, for the deploy scripts that run `wp --skip-plugins --skip-themes eval-file ...` (WP-84, WP-87).
+ * Wordfence's own settings table read and written with plain SQL, for the deploy scripts that run `wp --skip-plugins --skip-themes eval-file ...`.
  * Why not wfConfig::get()/set(): they need Wordfence loaded, and loading every plugin for two option writes costs a full bootstrap (about 98 MB peak with the template's
  * plugins) on a host that kills heavy processes. wfConfig is a name/val/autoload table and nothing reads these keys from a cache (no persistent options cache), so the
  * write is what the plugin would do for these keys (howGetIPs, alertEmails and the dismiss option have no side effects in wfConfig::set). Not for apiKey, isPaid,

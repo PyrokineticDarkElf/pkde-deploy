@@ -1,7 +1,7 @@
 <?php
 
 /**
- * bin/deploy/wordfence-standard.php (WP-87) in a child PHP with a fake $wpdb and fake options (no WordPress, no Wordfence): the release step sets Wordfence's
+ * bin/deploy/wordfence-standard.php in a child PHP with a fake $wpdb and fake options (no WordPress, no Wordfence): the release step sets Wordfence's
  * alertEmails, in its wfconfig table, to exactly the alert address from .env, leaves a site alone that names none, and never prints an address.
  */
 function pkdeRunWordfenceStandard(array $constants, ?string $current, bool $wordfence = true, array $extraRows = []): array

@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Takes the WooCommerce cart, checkout and my-account pages out of Rank Math's sitemap (WP-91, B-02). Those pages are noindex because Rank Math's
+ * Takes the WooCommerce cart, checkout and my-account pages out of Rank Math's sitemap (B-02). Those pages are noindex because Rank Math's
  * WooCommerce module says so in the page, by a filter, not in each page's own robots setting, so the sitemap would still list them. Idempotent: the IDs
  * are added to the pages already excluded, and Rank Math's cached sitemap files are dropped (Rank Math does not do that when this setting changes).
  * bin/setup runs it on a new site; an existing site runs it once, on staging and again on production. It writes one option and reads no secret.

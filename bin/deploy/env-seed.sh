@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Creates a site's 1Password secure note from its server .env, once (WP-87). That is a 1Password WRITE: run it yourself in a terminal (the desktop app prompts you).
+# Creates a site's 1Password secure note from its server .env, once. That is a 1Password WRITE: run it yourself in a terminal (the desktop app prompts you).
 #
 #   env-seed.sh <host> --env staging|prod --vault "<vault>" [--account <account>] [--example .env.example] [--dry-run]
 #

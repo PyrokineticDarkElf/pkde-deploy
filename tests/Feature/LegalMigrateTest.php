@@ -1,7 +1,7 @@
 <?php
 
 /**
- * bin/deploy/legal-migrate.php (WP-104), the pure parts in legal-migrate-lib.php. The two steps against a real WordPress (seeded legal Pages, the settings, a menu item, plan, apply, a
+ * bin/deploy/legal-migrate.php, the pure parts in legal-migrate-lib.php. The two steps against a real WordPress (seeded legal Pages, the settings, a menu item, plan, apply, a
  * second apply, the refusals) were run on the template stack; the report says so.
  */
 require_once dirname(__DIR__, 2) . '/bin/deploy/legal-migrate-lib.php';

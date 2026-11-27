@@ -11,7 +11,7 @@
 #
 # Usage: activate-release.sh <base_path> <release_timestamp> [keep_count]
 #
-# Rollback, in ONE command (WP-95): the release name `previous` means the complete release just before the one <BASE>/current points at:
+# Rollback, in ONE command: the release name `previous` means the complete release just before the one <BASE>/current points at:
 #
 #   bash <BASE>/activate-release.sh <BASE> previous
 #
@@ -50,7 +50,7 @@
 # supported way to run the firewall before WordPress is the opt-in
 # WORDFENCE_EXTENDED_PROTECTION=1 in shared/.env (bin/deploy/waf-prepend.sh, below):
 # its prepend file lives in shared/waf at a path that never changes and every
-# release gets a fresh web/.user.ini pointing at it (WP-85).
+# release gets a fresh web/.user.ini pointing at it.
 
 set -euo pipefail
 
@@ -180,7 +180,7 @@ seed_shared_dir languages
 rm -f "$RELEASE_DIR/.env"
 ln -s "$SHARED_DIR/.env" "$RELEASE_DIR/.env"
 
-# opcache.revalidate_path=1 (TPL-172). 20i's PHP-FPM runs OPcache with revalidate_path off: a script cached under the UNRESOLVED path (current/web/index.php)
+# opcache.revalidate_path=1. 20i's PHP-FPM runs OPcache with revalidate_path off: a script cached under the UNRESOLVED path (current/web/index.php)
 # keeps its bytecode, and that bytecode has the OLD release's directory compiled in (__DIR__), so after the symlink switch the web PHP runs the previous release
 # until an opcache_reset() (tcs staging, 2026-11-18: 6+ minutes after a green deploy every uncached page still came from the previous release; reproduced on
 # PHP-FPM 8.3: with the default the pool serves the old release for good after the switch, a web-side opcache_reset() fixes it, and with this setting set in the
@@ -207,7 +207,7 @@ else
     echo "OPcache: revalidate_path block off (PKDE_OPCACHE_REVALIDATE_PATH=0)"
 fi
 
-# Wordfence Extended Protection (WP-85), only when shared/.env has WORDFENCE_EXTENDED_PROTECTION=1: the firewall's prepend file lives in shared/waf at a path that
+# Wordfence Extended Protection, only when shared/.env has WORDFENCE_EXTENDED_PROTECTION=1: the firewall's prepend file lives in shared/waf at a path that
 # never changes and this release's web/.user.ini points at it (Wordfence's own installer writes both into the release, where the next release prunes them).
 # A failure here never stops the activation: the firewall then runs as the plugin's normal mode.
 if [ -f "$RELEASE_DIR/bin/deploy/waf-prepend.sh" ]; then
@@ -273,7 +273,7 @@ ln -sfn "$RELEASE_DIR" "$CURRENT_LINK.tmp"
 mv -Tf "$CURRENT_LINK.tmp" "$CURRENT_LINK"
 echo "Activated release $RELEASE -> $CURRENT_LINK"
 
-# curl behind the staging gate (HTTP Basic auth, TPL-191): the credentials come from STAGING_GATE_AUTH in shared/.env and go to curl on stdin as a config line (backslash and
+# curl behind the staging gate (HTTP Basic auth): the credentials come from STAGING_GATE_AUTH in shared/.env and go to curl on stdin as a config line (backslash and
 # quote escaped), so they are on no command line and in no URL (a URL built with -u would print them in -w %{redirect_url} or %{url_effective}: never use those with credentials).
 # Every web request of a switch or a rollback goes through this, so a manual rollback resets the web PHP behind the gate too (tcs staging: "could not request the opcache reset 401").
 gate_curl() {
@@ -296,7 +296,7 @@ gate_curl() {
 # revalidates every 10 s on top of the NFS attribute cache, which is harmless here: the name is a random 128-bit token and it prints a few lines). The file also reports which release it runs
 # from, which doubles as a check that the live web server really serves the release just activated.
 #
-# What the probe tells the log (TPL-172, tcs staging, 2026-11-18: the probe answered "serves release X" and every uncached page still came from the
+# What the probe tells the log (tcs staging, 2026-11-18: the probe answered "serves release X" and every uncached page still came from the
 # PREVIOUS release for 6+ minutes): the answer's first line is "ok <release>"; the second line says what the pool that answered looks like: whether
 # opcache_reset() returned true (it returns false and the page still prints "ok" when opcache.restrict_api blocks it), the opcache instance (its start
 # time: one value per FPM pool), the worker's pid, the host, and the settings that decide how stale code survives. The probe also clears the worker's
@@ -304,7 +304,7 @@ gate_curl() {
 # worker of the pool gets both. Then the FRESH RENDER CHECK (below) proves what the reset is for. Failure to reset only warns; a stale render fails the run.
 rm -f "$OPCACHE_STALE_MARKER"
 # One PHP-FPM worker keeps its OWN realpath cache for as long as realpath_cache_ttl says (20i: long enough that bb and tcs staging served the previous release for
-# 6+ minutes; TPL-172) and opcache_reset() does not clear it, only clearstatcache(true) run IN that worker does. Sequential requests all land on the same idle
+# 6+ minutes) and opcache_reset() does not clear it, only clearstatcache(true) run IN that worker does. Sequential requests all land on the same idle
 # worker, so the probe is requested OPCACHE_EXTRA_HITS times (default 16) IN PARALLEL with ?hold=1, which makes each request sleep for a moment so that the
 # requests spread over distinct workers; every one resets the opcache and clears its realpath cache. The distinct worker pids and opcache instances are counted.
 # When every parallel request got a worker of its own there may be more workers than requests: the log says so (raise OPCACHE_EXTRA_HITS).
@@ -360,7 +360,7 @@ reset_web_opcache() {
     printf '%s\n' '<?php if (isset($_GET["hold"])) { usleep(450000); } $r = function_exists("opcache_reset") ? @opcache_reset() : null; clearstatcache(true); $s = function_exists("opcache_get_status") ? @opcache_get_status(false) : null; echo "ok ", basename(dirname(realpath(__DIR__))), "\n"; echo "pool=", $s ? ($s["opcache_statistics"]["start_time"] ?? "?") : "none", " pid=", getmypid(), " reset=", var_export($r, true), " sapi=", PHP_SAPI, " php=", PHP_VERSION, " host=", php_uname("n"), " revalidate_path=", ini_get("opcache.revalidate_path"), " revalidate_freq=", ini_get("opcache.revalidate_freq"), " validate_timestamps=", ini_get("opcache.validate_timestamps"), " restrict_api=", ini_get("opcache.restrict_api") ?: "-", " realpath_ttl=", ini_get("realpath_cache_ttl"), "\n";' > "$OPCACHE_PROBE_FILE"
 
     # The 20i web node can lag a few seconds in resolving the new `current`, and answers 404 for the probe until it does
-    # (bp BP-46). Retry on 404 only (default: every 5s, 19 tries, about 90s); the probe file stays in place meanwhile.
+    # (bp). Retry on 404 only (default: every 5s, 19 tries, about 90s); the probe file stays in place meanwhile.
     # Any other failure (403, no connection, timeout) is not a lag and warns at once.
     local tries="${OPCACHE_RETRY_ATTEMPTS:-19}" pause="${OPCACHE_RETRY_INTERVAL:-5}" attempt=1 got=1
     while :; do
@@ -396,13 +396,13 @@ reset_web_opcache() {
     return 0
 }
 
-# --- the FRESH RENDER CHECK (TPL-172): a page nobody has cached must show this release's CSS ---
+# --- the FRESH RENDER CHECK: a page nobody has cached must show this release's CSS ---
 # The probe above proves the web server can reach the new release; this proves what the reset is for. It requests the home page with a one-off query
 # string (the page cache does not store a URL with one) and compares the stylesheet it links (assets/app-<hash>.css) with the one in THIS release's Vite
 # manifest. Equal: fine. Different: the web PHP is still running the previous release; the probe is requested again (another reset) and the page re-read,
 # up to 4 times, and a page that still differs after that marks the deploy FAILED (the release stays live; the run ends red at its end, with the reason).
 # It never guesses: when the manifest has no app.css entry, the page cannot be fetched (no answer, a coming-soon gate) or links no such stylesheet,
-# it says so and checks nothing. Behind the staging gate (HTTP Basic auth, TPL-191) it sends the gate's "user:password" from STAGING_GATE_AUTH in shared/.env
+# it says so and checks nothing. Behind the staging gate (HTTP Basic auth) it sends the gate's "user:password" from STAGING_GATE_AUTH in shared/.env
 # when that is set (to curl on stdin, never on a command line, never printed); a 401/403 without it, or with a refused one, is "skipped: behind the staging
 # gate". A home page that answers 5xx is a FAILED deploy (the release is live and the run ends red), not "not done": the site is broken.
 # PKDE_FRESH_RENDER_CHECK in shared/.env: fail (default), warn (a mismatch or a 5xx only warns) or off.
@@ -442,7 +442,7 @@ verify_fresh_render() {
                 fi
                 return 0 ;;
             5??)
-                # A 500 can be one worker that still holds the previous release's realpath cache (it answers fine a moment later: tcs staging, TCS-132). Look again a few times, with the
+                # A 500 can be one worker that still holds the previous release's realpath cache (it answers fine a moment later: tcs staging). Look again a few times, with the
                 # opcache reset and a short pause, before calling the site broken.
                 if [ "$five" -lt "${PKDE_FRESH_RENDER_5XX_RETRIES:-3}" ]; then
                     five=$((five + 1))
@@ -487,7 +487,7 @@ verify_fresh_render() {
 
     echo "WARN: ================================================================" >&2
     echo "WARN: STALE RELEASE: an uncached page of $url still links $served, but release $RELEASE names $expected." >&2
-    echo "WARN: the web PHP is serving the PREVIOUS release although current points at $RELEASE and the web opcache was reset (tcs staging, TPL-172)." >&2
+    echo "WARN: the web PHP is serving the PREVIOUS release although current points at $RELEASE and the web opcache was reset (tcs staging)." >&2
     echo "WARN: check opcache.restrict_api / opcache.revalidate_path / realpath_cache_ttl and whether more than one PHP pool serves the site (see the Web PHP lines above)," >&2
     echo "WARN: restart PHP for the package in the My20i panel, then request the site and re-run this check by hand." >&2
     echo "WARN: ================================================================" >&2
@@ -550,7 +550,7 @@ EOF
     echo "Added the Site Hardening block to $HTACCESS"
 fi
 
-# PHP that must never be requested directly, and SVG that must never run script when opened on its own (MGR-67: rp, bp audits). A
+# PHP that must never be requested directly, and SVG that must never run script when opened on its own (rp, bp audits). A
 # separate block with its own marker, so every site gets it on its next deploy whatever its Site Hardening block already holds.
 #  - app/uploads/*.php (and .phtml, .phar): nothing in the media library is code; an uploaded or planted PHP file there is not run.
 #  - app/themes/*/**.php: theme PHP (functions.php, block render.php, ...) is only ever included by WordPress, never requested.
@@ -599,7 +599,7 @@ EOF
     echo "Added the Asset Cache block to $HTACCESS"
 fi
 
-# Browser caching for what the Asset Cache block above does not cover (tcs GTmetrix, MGR-68): media in app/uploads (30 days; a replaced
+# Browser caching for what the Asset Cache block above does not cover (tcs GTmetrix): media in app/uploads (30 days; a replaced
 # image gets a new file name, and Cloudflare/W3TC revalidate HTML separately) and any theme or plugin asset requested with a ?ver= query
 # (the version changes with the file: one year, immutable). HTML and PHP are untouched. Same env-variable technique as above;
 # appended last so it overrides W3TC's Browser Cache rules; re-added when W3TC drops it. Each part is wrapped in <IfModule>.
@@ -638,14 +638,14 @@ EOF
     echo "Added the XML-RPC Hardening block to $HTACCESS"
 fi
 
-# Query Flood Guard (TPL-184, tcs TCS-123): a botnet took a WooCommerce shop down by requesting its layered-navigation URLs
+# Query Flood Guard (tcs): a botnet took a WooCommerce shop down by requesting its layered-navigation URLs
 # (?filter_colour=a,b,c&query_type_colour=or). WooCommerce runs every combination as an uncached query, and the kit's own filters
 # (sage_filter_*, no links to crawl) never produce these URLs, so Apache answers them 410 Gone before WordPress boots. The rule has to sit BEFORE
 # WordPress's own rules (they send every request that is not a file to index.php with [L]), so it is inserted above "# BEGIN WordPress".
 #  - Matched: a query argument named filter_<name>=, query_type_<name>= or rating_filter= (case-insensitive, at the start or after &).
 #  - NOT matched, by construction: sage_filter_* (the "filter_" is not at the start of the name), and the array-valued filter_product_cat[]= /
 #    filter_product_tag[]= of the earlier custom controls (the name is followed by "[" or "%5B", not "="); the kit stopped migrating those URLs in 2026.11.19.1, so they now do nothing.
-#  - The cap (WP-96): 120 or more sage_filter_ arguments in one query string is answered 410 as well. The kit's own limit is max_active_groups x
+#  - The cap: 120 or more sage_filter_ arguments in one query string is answered 410 as well. The kit's own limit is max_active_groups x
 #    max_values_per_group (6 x 10 = 60 with the defaults) and anything above that is a 404 from WordPress; this is the same refusal one step earlier, with a fixed
 #    number above any legal request. A site that raises both kit limits so that their product exceeds 120 changes the number in its shared .htaccess. The
 #    pattern counts occurrences with an atomic group, so it cannot backtrack, and is anchored at the start so the engine does not rescan from every position (an unanchored version took 650 ms on a 7 kB string): ^(?>.*?(?:^|&)sage_filter_){120}.
@@ -679,7 +679,7 @@ elif block="$(awk '/# BEGIN Query Flood Guard/{f=1} f{print} /# END Query Flood 
     echo "Added the sage_filter_ cap to the Query Flood Guard block in $HTACCESS"
 fi
 
-# Security headers (WP-91, TPL-180): the four every response should carry, set once for the whole site in the shared .htaccess and re-added when W3TC
+# Security headers: the four every response should carry, set once for the whole site in the shared .htaccess and re-added when W3TC
 # drops them. `always` also covers error pages and redirects. Chosen so nothing the template uses breaks:
 #  - X-Content-Type-Options nosniff: a file is only what its Content-Type says.
 #  - Referrer-Policy strict-origin-when-cross-origin: same-origin links keep the full referrer, other sites get the origin only (analytics and
@@ -705,7 +705,7 @@ EOF
     echo "Added the Security Headers block to $HTACCESS"
 fi
 
-# User INI Guard (WP-85, TPL-188/191): web/.user.ini holds the opcache setting on every site and, with Wordfence Extended Protection, the path of the firewall
+# User INI Guard (/191): web/.user.ini holds the opcache setting on every site and, with Wordfence Extended Protection, the path of the firewall
 # shim. A default Apache serves it (200; checked in Apache 2.4), so it is denied here for every site (20i's own stack already answers 403 on bp, rp, jsd and mds:
 # belt and braces). <IfModule mod_authz_core.c>: no Apache 2.4 authorisation, no rule and never a 500. Added once, re-added when W3TC drops it.
 if ! grep -q '# BEGIN User INI Guard' "$HTACCESS"; then
@@ -722,7 +722,7 @@ EOF
     echo "Added the User INI Guard block to $HTACCESS"
 fi
 
-# Staging Noindex (WP-91, TPL-176): on a server whose .env says WP_ENV is not production, every response, static files included, carries
+# Staging Noindex: on a server whose .env says WP_ENV is not production, every response, static files included, carries
 # X-Robots-Tag: noindex, nofollow. The platform module staging-safety-net sends the same header for what WordPress answers; images, PDFs and
 # the rest never reach PHP, so only the web server can cover them. The block is ADDED where WP_ENV is staging or any other non-production
 # value and REMOVED where it is production or unset, so a staging .htaccess copied to production cannot keep the site out of search.
@@ -745,7 +745,7 @@ elif grep -q '# BEGIN Staging Noindex' "$HTACCESS"; then
     echo "Removed the Staging Noindex block from $HTACCESS (WP_ENV is production or unset)"
 fi
 
-# Prove the hardening answers, not just that its marker is in the file (MGR-67: bp, js). A marker proves nothing when the server ignores the
+# Prove the hardening answers, not just that its marker is in the file (bp, js). A marker proves nothing when the server ignores the
 # file (AllowOverride, a proxy in front, mod_rewrite off). Each probe path does not exist; the deny rules fire before the file system is
 # consulted, so a working rule answers 403 and a missing one 404. A mismatch warns loudly and never fails the deploy (the release is
 # already live); the warning names the path so a person can look. Skipped without WP_HOME or curl.
@@ -898,7 +898,7 @@ if [ -f "$WP_CLI" ]; then
     run_wp cache flush
     run_wp rewrite flush
 
-    # Wordfence's alert recipients are exactly the alert address from .env (WORDFENCE_ALERT_EMAIL, else WP_ADMIN_EMAIL; WP-87). It changes nothing on a site
+    # Wordfence's alert recipients are exactly the alert address from .env (WORDFENCE_ALERT_EMAIL, else WP_ADMIN_EMAIL). It changes nothing on a site
     # that sets neither, or without Wordfence. Warn-only like every step here. It loads no plugin (plain SQL on Wordfence's table, wfconfig-sql.php): a full bootstrap
     # for one option write is not worth the memory.
     if [ -f "$RELEASE_DIR/bin/deploy/wordfence-standard.php" ]; then
@@ -914,7 +914,7 @@ if [ -f "$WP_CLI" ]; then
     # the first pages of its sitemap now instead of leaving them to the first visitors. Only when W3TC is active AND a preloader
     # sitemap is set in its settings (bin/deploy/w3tc-settings.php sets one); otherwise nothing runs. Bounded and warn-only.
     if wp_run plugin is-active w3-total-cache >/dev/null 2>&1; then
-        # Purge the page cache at every release (WP-91, T-9). web/app/cache is per release, so the new release's own cache starts empty; this makes
+        # Purge the page cache at every release (T-9). web/app/cache is per release, so the new release's own cache starts empty; this makes
         # that explicit (and clears a cache directory a site has moved to a shared location, and any reverse proxy W3TC is configured for).
         run_wp w3-total-cache flush posts
         PRIME_SITEMAP="$(wp_run w3-total-cache option get pgcache.prime.sitemap 2>/dev/null | tr -d '[:space:]')" || PRIME_SITEMAP=""

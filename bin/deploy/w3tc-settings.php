@@ -26,10 +26,10 @@ $c = \W3TC\Dispatcher::config();
 foreach (pkde_w3tc_standard(home_url('/sitemap_index.xml')) as $key => $value) {
     $c->set($key, $value);
 }
-// robots.txt and the sitemaps are never page-cached (WP-91): the standard's entries are added to whatever the site already rejects.
+// robots.txt and the sitemaps are never page-cached: the standard's entries are added to whatever the site already rejects.
 $c->set('pgcache.reject.uri', array_values(array_unique(array_merge((array) $c->get_array('pgcache.reject.uri'), pkde_w3tc_reject_uris()))));
 if (class_exists('WooCommerce')) {
-    // By default the basket cookies are rejected. A site that opted in (pkde_cache_basket_visitors = 1, MGR-76) has them taken out of the list.
+    // By default the basket cookies are rejected. A site that opted in (pkde_cache_basket_visitors = 1) has them taken out of the list.
     $existing = (array) $c->get_array('pgcache.reject.cookie');
     $optIn = pkde_w3tc_cache_basket_visitors();
     $c->set('pgcache.reject.cookie', array_values($optIn ? array_diff($existing, pkde_w3tc_basket_cookies()) : array_unique(array_merge($existing, pkde_w3tc_woocommerce_cookies()))));

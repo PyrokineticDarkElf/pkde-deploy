@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The pure parts of site-details-migrate.php (WP-106): how the old `client_*` options (and a site adapter) map onto Site details, and how the result fills a site's stored values.
+ * The pure parts of site-details-migrate.php: how the old `client_*` options (and a site adapter) map onto Site details, and how the result fills a site's stored values.
  * No WordPress needed.
  */
 

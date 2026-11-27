@@ -1,7 +1,7 @@
 <?php
 
 /**
- * bin/deploy/apply-pages.php (from bb's script, BB-56): the pure parts in apply-pages-lib.php. The two steps against a real WordPress (plan, apply, a second plan, a missing page,
+ * bin/deploy/apply-pages.php (from bb's script): the pure parts in apply-pages-lib.php. The two steps against a real WordPress (plan, apply, a second plan, a missing page,
  * a missing picture, a form placeholder) were run on the template stack; the report says so.
  */
 require_once dirname(__DIR__, 2) . '/bin/deploy/apply-pages-lib.php';
@@ -46,10 +46,10 @@ it('says how it works: plan by default, by slug, a revision, never creating a pa
     $source = file_get_contents(dirname(__DIR__, 2) . '/bin/deploy/apply-pages.php');
 
     expect($source)->toContain("'mode' => 'plan'", 'wp_save_post_revision', "'name' => pkde_pages_slug(\$file)", "'content/pages', 'config/content/pages'", 'page missing', 'matches', "kses_remove_filters")
-        ->and(substr_count($source, 'wp_insert_post('))->toBe(1)->and($source)->toContain("'post_type' => 'pkde_legal', 'post_status' => 'draft'"); // it never creates a page: the one insert is a DRAFT legal document (TPL-268)
+        ->and(substr_count($source, 'wp_insert_post('))->toBe(1)->and($source)->toContain("'post_type' => 'pkde_legal', 'post_status' => 'draft'"); // it never creates a page: the one insert is a DRAFT legal document
 });
 
-it('finds the FAQ group placeholders in a page file, once each (TPL-258)', function () {
+it('finds the FAQ group placeholders in a page file, once each', function () {
     expect(pkde_pages_faq_group_slugs('<!-- wp:sage/faq {"groups":[{{faq-group:general-questions}},{{faq-group:Delivery}}],"order":"manual"} /--> {{faq-group:general-questions}}'))->toBe(['general-questions', 'delivery'])
         ->and(pkde_pages_faq_group_slugs('no placeholders'))->toBe([]);
 
@@ -57,7 +57,7 @@ it('finds the FAQ group placeholders in a page file, once each (TPL-258)', funct
     expect($source)->toContain('{{faq-group:', 'pkde_faq_group', 'no FAQ group with the slug');
 });
 
-it('names the blocks a legal document may not hold, from the nested tree too (TPL-261)', function () {
+it('names the blocks a legal document may not hold, from the nested tree too', function () {
     $tree = [
         ['blockName' => 'core/heading', 'innerBlocks' => []],
         ['blockName' => null, 'innerBlocks' => []], // the filler between blocks
@@ -75,7 +75,7 @@ it('names the blocks a legal document may not hold, from the nested tree too (TP
 });
 
 
-it('reads the front matter and the sidecar of a legal file, and says what is wrong with them (TPL-268)', function () {
+it('reads the front matter and the sidecar of a legal file, and says what is wrong with them', function () {
     $file = "<!-- pkde-legal {\"type\": \"privacy\", \"title\": \"Privacy policy\", \"effective\": \"2026-11-01\"} -->\n<!-- wp:paragraph -->\n<p>Text.</p>\n<!-- /wp:paragraph -->\n";
     $r = pkde_pages_legal_front_matter($file);
 

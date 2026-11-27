@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Visible-text identity check between the live site and a rebuilt one, over HTTP (from el, EL-7): for each path, the words of the page's
+"""Visible-text identity check between the live site and a rebuilt one, over HTTP (from el): for each path, the words of the page's
 <main> text that are on one side only. Header, footer, scripts, styles, SVG and form field options are ignored; case, emoji and punctuation do
 not count. Different from the native tools' check of stored content: this is what a visitor reads.
 

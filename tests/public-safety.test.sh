@@ -26,5 +26,8 @@ check "no hard-coded token, password or API key assignment" \
 check "no Google tag, analytics or Turnstile site key" \
   "git grep -nIE 'GTM-[A-Z0-9]{6,}|UA-[0-9]{5,}|G-[A-Z0-9]{9,}|0x4[A-Za-z0-9_-]{20,}' -- . $EXCLUDE | grep -vE 'GTM-X+'"
 
+check "no task id (a card number of the team's board) outside CHANGELOG.md" \
+  "git grep -nIE '(^|[^A-Za-z0-9_])(TPL|WP|MGR|TCS|BB|RP|BP|JSD|MDS|CS|EL|JS)-[0-9]+' -- . $EXCLUDE ':(exclude)CHANGELOG.md'"
+
 echo "RESULT: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

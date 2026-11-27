@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Test for bin/deploy/push-gh-secrets.sh (MGR-71) with a fake `op` and a fake `gh`: no real secrets, no network. The fake values are canary strings, so a
+# Test for bin/deploy/push-gh-secrets.sh with a fake `op` and a fake `gh`: no real secrets, no network. The fake values are canary strings, so a
 # leak into the script's output (or onto a command line) is caught. Checks: the values reach `gh secret set` only through stdin and nothing is printed; the
 # item is found by title or op:// reference; the standard layout (an SSH Key item with DEPLOY_PATH, SSH_HOST, SSH_PORT, SSH_USER and the private key);
 # --env is required and must match the item's title; a missing or empty field stops the run before anything is set; an existing secret is refused without

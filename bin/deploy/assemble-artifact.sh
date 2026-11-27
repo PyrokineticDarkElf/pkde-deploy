@@ -64,7 +64,7 @@ rm -f "$DEST/web/wp/readme.html" "$DEST/web/wp/license.txt"
 
 # '/.htaccess' above is anchored to web/: only the docroot's own file (kept in shared/ on the server) is left out. An unanchored
 # '.htaccess' also dropped every plugin's own access denials (Wordfence lib/, W3 Total Cache pub/ and ini/), so releases shipped
-# without them (TCS-88); check-artifact.sh now requires each one the build tree has. web/.htaccess.dist is deliberately NOT excluded:
+# without them; check-artifact.sh now requires each one the build tree has. web/.htaccess.dist is deliberately NOT excluded:
 # activate-release.sh seeds the server's shared .htaccess from it once.
 rsync -a vendor/ "$DEST/vendor/"
 rsync -a config/ "$DEST/config/"

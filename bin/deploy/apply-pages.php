@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Applies a site's page content, kept as files, to the pages it belongs to (from bb's config/content/apply-pages.php, BB-56). The files are repeatable site content: a staging
+ * Applies a site's page content, kept as files, to the pages it belongs to (from bb's config/content/apply-pages.php). The files are repeatable site content: a staging
  * run and, at the cutover, a production run after the database import give the same pages. Run it with WP-CLI's eval-file; it prints slugs, statuses and counts only.
  *
  *   bash bin/deploy/wp.sh eval-file bin/deploy/apply-pages.php            plan (the default; read-only)
@@ -54,7 +54,7 @@ foreach ($wanted as $candidate) {
     }
 }
 
-// Legal documents (WP-104): content/legal/<slug>.html is applied to the pkde_legal post with that slug (legal-migrate apply converts the Page first).
+// Legal documents: content/legal/<slug>.html is applied to the pkde_legal post with that slug (legal-migrate apply converts the Page first).
 $legalDir = null;
 
 foreach (isset($opts['legal']) ? [$opts['legal']] : ['content/legal'] as $candidate) {

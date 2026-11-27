@@ -8,7 +8,7 @@
  *
  * or locally: docker compose run --rm wpcli wp --allow-root eval-file vendor/pkde/deploy/bin/deploy/rankmath-baseline.php
  *
- * Part by part (WP-99 B): `eval-file ... rankmath-baseline.php only=titles` applies one part of the baseline on its own, `only=titles,schema` several;
+ * Part by part: `eval-file ... rankmath-baseline.php only=titles` applies one part of the baseline on its own, `only=titles,schema` several;
  * the parts are titles, schema and share-image (pkde_rankmath_only()). The owner's ruling is "Archives off" for every site, so every site runs `only=titles`
  * on staging after its next deploy and on production in the window. No argument: the whole baseline, as before. Idempotent; prints key names only.
  *

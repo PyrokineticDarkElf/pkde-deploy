@@ -1,7 +1,7 @@
 <?php
 
 /**
- * bin/deploy/site-details-migrate.php (WP-106), the pure parts in site-details-migrate-lib.php. The two steps against a real WordPress (old options, plan, apply, a second apply,
+ * bin/deploy/site-details-migrate.php, the pure parts in site-details-migrate-lib.php. The two steps against a real WordPress (old options, plan, apply, a second apply,
  * the read shim, an adapter, a locked field) were run on the template stack; the report says so.
  */
 require_once dirname(__DIR__, 2) . '/bin/deploy/site-details-migrate-lib.php';

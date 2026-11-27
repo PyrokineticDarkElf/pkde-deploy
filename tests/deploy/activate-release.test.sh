@@ -95,7 +95,7 @@ check "wflogs config*.php NOT copied (Wordfence regenerates them)" "! ls $BASE/s
 check "ewww seeded (placeholder + binary)" "[ -f $BASE/shared/ewww/lazy/placeholder.png ] && [ -f $BASE/shared/ewww/jpegtran ]"
 check "R2 ewww is a symlink to shared" "[ \"\$(readlink $BASE/releases/R2/web/app/ewww)\" = $BASE/shared/ewww ]"
 check "advanced-cache.php drop-in carried into R2" "[ -f $BASE/releases/R2/web/app/advanced-cache.php ]"
-check "R2 has no auto_prepend_file in its .user.ini (so no dangling path; the file itself only carries the opcache.revalidate_path block, TPL-172)" "! grep -q auto_prepend_file $BASE/releases/R2/web/.user.ini 2>/dev/null"
+check "R2 has no auto_prepend_file in its .user.ini (so no dangling path; the file itself only carries the opcache.revalidate_path block)" "! grep -q auto_prepend_file $BASE/releases/R2/web/.user.ini 2>/dev/null"
 check "runtime-added .htaccess rule preserved" "grep -q USER-ADDED-BLOCK $BASE/shared/.htaccess"
 check "no leftover *.seeding.* temp dirs" "! ls -d $BASE/shared/*.seeding.* >/dev/null 2>&1"
 check "current -> R2" "[ \"\$(readlink $BASE/current)\" = $BASE/releases/R2 ]"
@@ -218,7 +218,7 @@ bash $S $BASE R22 5 >$T/s9c.log 2>&1; rc=$?
 check "wrong release reported: exit 0 and a warning naming it" "[ $rc -eq 0 ] && grep -q \"reports release '19990101000000', not R22\" $T/s9c.log"
 check "wrong release: the file is removed" "[ -z \"\$(ls $BASE/releases/R22/web/zz-opcache-*.php 2>/dev/null)\" ]"
 
-# bp BP-46: the 20i web node answers 404 for a few seconds after the switch. Retry on 404 only; keep the file meanwhile.
+# bp the 20i web node answers 404 for a few seconds after the switch. Retry on 404 only; keep the file meanwhile.
 : > $T/curl.log; echo notfound2 > $T/curl-mode; mkrelease R24
 OPCACHE_RETRY_INTERVAL=0 bash $S $BASE R24 5 >$T/s9e.log 2>&1; rc=$?
 check "404 twice then ok: exit 0 and the success message, no warning" "[ $rc -eq 0 ] && grep -q 'Web opcache reset; the web server serves release R24' $T/s9e.log && ! grep -q 'WARN: could not request' $T/s9e.log"
@@ -241,7 +241,7 @@ bash $S $BASE R23 5 >$T/s9d.log 2>&1; rc=$?
 check "no WP_HOME: skipped with a warning, exit 0, curl never called" "[ $rc -eq 0 ] && grep -q 'cannot reset the web opcache' $T/s9d.log && [ ! -s $T/curl.log ]"
 check "no WP_HOME: no probe file written" "[ -z \"\$(ls $BASE/releases/R23/web/zz-opcache-*.php 2>/dev/null)\" ]"
 
-echo "=== Scenario 9h: what the web PHP reports, the extra probe hits, and the fresh render check (TPL-172) ==="
+echo "=== Scenario 9h: what the web PHP reports, the extra probe hits, and the fresh render check ==="
 mkmanifest() { # <release> <css file>: a Vite manifest naming the stylesheet
   mkdir -p $BASE/releases/$1/web/app/themes/sage/public/build
   printf '{\n  "resources/css/app.css": {\n    "file": "assets/%s",\n    "src": "resources/css/app.css",\n    "isEntry": true\n  }\n}\n' "$2" > $BASE/releases/$1/web/app/themes/sage/public/build/manifest.json
@@ -316,7 +316,7 @@ rm -f $T/page-css
 export OPCACHE_EXTRA_HITS=0 PKDE_FRESH_RENDER_PAUSE=0
 echo "WP_ENV=production" > $BASE/shared/.env
 
-echo "=== Scenario 9j: opcache.revalidate_path=1 in the release's .user.ini (TPL-172) ==="
+echo "=== Scenario 9j: opcache.revalidate_path=1 in the release's .user.ini ==="
 resetenv
 : > $T/curl.log; mkrelease R50
 bash $S $BASE R50 5 >$T/s9j1.log 2>&1; rc=$?
@@ -420,7 +420,7 @@ check "W3TC active but no preloader sitemap: nothing is primed, and it says so" 
 touch $T/w3tc-sitemap; mkrelease W3; : > $T/php83.log
 bash $S $BASE W3 5 >$T/s13c.log 2>&1
 check "W3TC active with a sitemap: pgcache_prime --start=1 --limit=30 runs after the flushes" "grep -q 'w3-total-cache pgcache_prime --start=1 --limit=30' $T/php83.log && [ \$(grep -n 'rewrite flush\|pgcache_prime' $T/php83.log | cut -d: -f1 | tr '\n' ' ' | awk '{print (\$1<\$2) ? \"ordered\" : \"wrong\"}') = ordered ]"
-check "W3TC active: the page cache is purged (flush posts) after the flushes and before the warm-up (WP-91)" "grep -q 'w3-total-cache flush posts' $T/php83.log && [ \$(grep -n 'rewrite flush\|w3-total-cache flush posts\|pgcache_prime' $T/php83.log | cut -d: -f1 | tr '\n' ' ' | awk '{print (\$1<\$2 && \$2<\$3) ? \"ordered\" : \"wrong\"}') = ordered ]"
+check "W3TC active: the page cache is purged (flush posts) after the flushes and before the warm-up" "grep -q 'w3-total-cache flush posts' $T/php83.log && [ \$(grep -n 'rewrite flush\|w3-total-cache flush posts\|pgcache_prime' $T/php83.log | cut -d: -f1 | tr '\n' ' ' | awk '{print (\$1<\$2 && \$2<\$3) ? \"ordered\" : \"wrong\"}') = ordered ]"
 mkrelease W4; : > $T/php83.log
 CACHE_WARM_LIMIT=7 bash $S $BASE W4 5 >$T/s13d.log 2>&1
 check "CACHE_WARM_LIMIT=7 is used" "grep -q 'pgcache_prime --start=1 --limit=7' $T/php83.log"
@@ -501,7 +501,7 @@ bash $S $BASE WC3 5 >$T/s15c.log 2>&1
 check "no W3TC plugin: no warning" "! grep -q 'uses W3 Total Cache' $T/s15c.log"
 BASE=$OLD_BASE
 
-# 16. Staging Noindex (WP-91, TPL-176): X-Robots-Tag for static files, where WP_ENV is not production; removed where it is.
+# 16. Staging Noindex: X-Robots-Tag for static files, where WP_ENV is not production; removed where it is.
 OLD_BASE=$BASE
 mkrelease SN1; printf 'WP_ENV=production\n' > $BASE/shared/.env
 bash $S $BASE SN1 5 >$T/s16a.log 2>&1
@@ -524,7 +524,7 @@ bash $S $BASE SN6 5 >$T/s16f.log 2>&1
 check "a staging .htaccess copied to production loses the block, and every other block stays" "! grep -q 'Staging Noindex' $BASE/shared/.htaccess && ! grep -q 'X-Robots-Tag' $BASE/shared/.htaccess && grep -q 'BEGIN WordPress' $BASE/shared/.htaccess && grep -q 'END XML-RPC Hardening' $BASE/shared/.htaccess && grep -q 'BEGIN Upload Cache' $BASE/shared/.htaccess"
 BASE=$OLD_BASE
 
-# 17. Security Headers (WP-91, TPL-180): added once in every environment, re-added when W3TC drops it, an edited block stays, HSTS is never part of it.
+# 17. Security Headers: added once in every environment, re-added when W3TC drops it, an edited block stays, HSTS is never part of it.
 OLD_BASE=$BASE
 mkrelease SH1; printf 'WP_ENV=production\n' > $BASE/shared/.env
 bash $S $BASE SH1 5 >$T/s17a.log 2>&1
@@ -543,7 +543,7 @@ bash $S $BASE SH4 5 >$T/s17d.log 2>&1
 check "a dropped Security Headers block is added again" "[ \$(grep -c 'BEGIN Security Headers' $BASE/shared/.htaccess) -eq 1 ] && grep -q 'X-Frame-Options' $BASE/shared/.htaccess"
 BASE=$OLD_BASE
 
-# 18. Query Flood Guard (TPL-184): inserted ABOVE WordPress's rules (they end the pass for every request that is not a file), once, re-added when dropped,
+# 18. Query Flood Guard: inserted ABOVE WordPress's rules (they end the pass for every request that is not a file), once, re-added when dropped,
 # and a first deploy that has no WordPress block yet still gets it.
 OLD_BASE=$BASE
 mkrelease QF1; printf 'WP_ENV=production\n' > $BASE/shared/.env
@@ -560,7 +560,7 @@ bash $S $BASE QF3 5 >$T/s18c.log 2>&1
 check "a dropped guard is added again, still above WordPress's block, and the other blocks survive" "[ \$(grep -c 'BEGIN Query Flood Guard' $BASE/shared/.htaccess) -eq 1 ] && [ \$(grep -n 'BEGIN Query Flood Guard' $BASE/shared/.htaccess | cut -d: -f1) -lt \$(grep -n 'BEGIN WordPress' $BASE/shared/.htaccess | cut -d: -f1) ] && grep -q 'BEGIN Security Headers' $BASE/shared/.htaccess && grep -q 'BEGIN Upload Cache' $BASE/shared/.htaccess"
 BASE=$OLD_BASE
 
-echo "=== Scenario 19: ONE-COMMAND ROLLBACK, the release name 'previous' (WP-95) ==="
+echo "=== Scenario 19: ONE-COMMAND ROLLBACK, the release name 'previous' ==="
 OLD_BASE=$BASE; BASE=$T/deploy/rollback; mkdir -p $BASE/shared; cp $OLD_BASE/shared/.env $BASE/shared/.env; printf 'WP_HOME=https://example.test/\n' >> $BASE/shared/.env
 # the curl stub of scenario 9 answers for the base that existed then; this scenario has its own base, so it gets its own small stub (it also understands the
 # fresh render check's -o/-w interface: the status comes from $T/page-status, default 200, and --config - means the gate's credentials arrive on stdin)
@@ -603,7 +603,7 @@ bash $S $BASE 20261104000000 9 >/dev/null 2>&1
 check "rolling forward again by name still works" "[ \"\$(readlink $BASE/current)\" = $BASE/releases/20261104000000 ]"
 BASE=$OLD_BASE
 
-echo "=== Scenario 20: the fresh render check behind the staging gate, a 5xx home page, and the User INI Guard (TPL-191, WP-85) ==="
+echo "=== Scenario 20: the fresh render check behind the staging gate, a 5xx home page, and the User INI Guard ==="
 OLD_BASE=$BASE; BASE=$T/deploy/gate; mkdir -p $BASE/shared; cp $OLD_BASE/shared/.env $BASE/shared/.env; printf 'WP_HOME=https://example.test/\n' >> $BASE/shared/.env
 mkrelease G1
 rm -f $T/page-status $T/gate.log; : > $T/curl.log
@@ -641,7 +641,7 @@ check "503 with PKDE_FRESH_RENDER_CHECK=warn: warns, exit 0" "[ $rc -eq 0 ] && g
 rm -f $T/page-status
 BASE=$OLD_BASE
 
-echo "=== Scenario 21: the sage_filter_ cap reaches a Query Flood Guard block from before it, and not one a site emptied (WP-96) ==="
+echo "=== Scenario 21: the sage_filter_ cap reaches a Query Flood Guard block from before it, and not one a site emptied ==="
 OLD_BASE=$BASE; BASE=$T/deploy/cap; mkdir -p $BASE/shared; cp $OLD_BASE/shared/.env $BASE/shared/.env; printf 'WP_HOME=https://example.test/\n' >> $BASE/shared/.env
 mkrelease C1
 bash $S $BASE C1 5 >$T/s21a.log 2>&1

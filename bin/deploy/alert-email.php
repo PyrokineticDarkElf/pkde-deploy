@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The address Wordfence alerts go to (WP-87). Two optional .env variables define it: WORDFENCE_ALERT_EMAIL, else WP_ADMIN_EMAIL. They are usually the same
+ * The address Wordfence alerts go to. Two optional .env variables define it: WORDFENCE_ALERT_EMAIL, else WP_ADMIN_EMAIL. They are usually the same
  * address but may differ. A value that is not an email address counts as unset. Shared by wordfence-standard.php (writes it on every release) and
  * drift-check.php (checks it); pure, no WordPress calls.
  */

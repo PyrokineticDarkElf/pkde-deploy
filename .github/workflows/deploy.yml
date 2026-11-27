@@ -36,7 +36,7 @@ on:
         type: boolean
         default: true
       require-pinned-host-key:
-        description: "Set true to refuse to deploy when the <PROD|STAGING>_SSH_KNOWN_HOSTS secret is missing (no trust on first use). Default false so no site breaks on the bump; set it once the secret exists (TPL-129)."
+        description: "Set true to refuse to deploy when the <PROD|STAGING>_SSH_KNOWN_HOSTS secret is missing (no trust on first use). Default false so no site breaks on the bump; set it once the secret exists."
         type: boolean
         default: false
       runs-on:
@@ -150,7 +150,7 @@ jobs:
         run: bash "$GITHUB_WORKSPACE/.pkde-deploy/bin/deploy/composer-audit.sh" .
         working-directory: ${{ inputs.theme-dir }}
 
-      # --ignore-scripts: a dependency's install script never runs on the runner (MGR-67). The build needs none: esbuild, Rollup and
+      # --ignore-scripts: a dependency's install script never runs on the runner. The build needs none: esbuild, Rollup and
       # Tailwind ship their binaries as optional platform packages, not through a postinstall.
       - name: Install theme npm dependencies
         run: npm ci --ignore-scripts

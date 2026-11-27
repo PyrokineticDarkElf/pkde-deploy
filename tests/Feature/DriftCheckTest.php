@@ -153,7 +153,7 @@ it('skips Wordfence on staging while it is inactive, and still holds an active o
     $facts['wordfence']['alertOn_update'] = '1';
     expect(pkdeStatuses($facts)['Wordfence alertOn_update'])->toBe('FAIL');
 
-    // an active Wordfence on staging is held to the username-discovery rule too (WP-88)
+    // an active Wordfence on staging is held to the username-discovery rule too
     $facts['wordfence']['alertOn_update'] = '0';
     $facts['wordfence']['loginSec_disableAuthorScan'] = '0';
     expect(pkdeStatuses($facts)['Wordfence loginSec_disableAuthorScan'])->toBe('FAIL');
@@ -297,7 +297,7 @@ it('requires the login slug to be managed by .env, and never prints it', functio
     expect(pkdeStatuses($facts))->not->toHaveKey($check);
 });
 
-it('fails a .env split between environments: WP_ENV, DISALLOW_INDEXING and STAGING_MAIL_TO (bp, MGR-67)', function () {
+it('fails a .env split between environments: WP_ENV, DISALLOW_INDEXING and STAGING_MAIL_TO (bp)', function () {
     $good = array_merge(pkdeGoodFacts(), ['wp_env' => 'production', 'disallow_indexing' => false, 'staging_mail_to' => false]);
     expect(array_keys(pkdeStatuses($good), 'FAIL'))->toBe([]);
 
@@ -363,7 +363,7 @@ it('names the cron events the W3TC standard needs', function () {
         ->and(pkde_w3tc_cron_events(['pgcache.enabled' => false, 'pgcache.engine' => 'file_generic', 'pgcache.prime.enabled' => true]))->toBe([]);
 });
 
-it('keeps the basket cookies rejected by default and requires them NOT rejected once the site opted in to caching basket visitors (MGR-76)', function () {
+it('keeps the basket cookies rejected by default and requires them NOT rejected once the site opted in to caching basket visitors', function () {
     $facts = pkdeGoodFacts();
     expect(pkdeStatuses($facts)['W3TC page cache skips the WooCommerce cookies'])->toBe('PASS');
 
@@ -380,7 +380,7 @@ it('keeps the basket cookies rejected by default and requires them NOT rejected 
         ->and(pkde_w3tc_woocommerce_cookies(true))->toBe([]);
 });
 
-it('fails an opted-in site whose theme still reads the basket on the server or lacks the kit\'s cache-safe helper (MGR-76)', function () {
+it('fails an opted-in site whose theme still reads the basket on the server or lacks the kit\'s cache-safe helper', function () {
     $facts = pkdeGoodFacts();
     $facts['cache_basket_visitors'] = true;
     $facts['w3tc']['reject_cookies'] = [];
@@ -420,7 +420,7 @@ it('never raises the basket-visitor rows on a site without WooCommerce, even if 
     expect(array_filter($names, fn($n) => str_contains($n, 'basket') || str_contains($n, 'Cache-safe theme') || str_contains($n, 'WooCommerce cookies')))->toBe([]);
 });
 
-it('requires the kit\'s breadcrumb standard, and tells when Rank Math\'s module is off (MGR-77 parity)', function () {
+it('requires the kit\'s breadcrumb standard, and tells when Rank Math\'s module is off (parity)', function () {
     $facts = pkdeGoodFacts();
     $facts['breadcrumbs'] = ['kit' => true, 'separator' => '/', 'home' => 'Home', 'rank_math' => true, 'module_on' => true];
     $names = pkdeStatuses($facts);
@@ -440,7 +440,7 @@ it('requires the kit\'s breadcrumb standard, and tells when Rank Math\'s module 
     expect(array_keys(pkdeStatuses($facts)))->not->toContain('Breadcrumbs: the kit sets the standard (separator "/", label "Home")');
 });
 
-it('fails an active Relevanssi whose index is empty and says nothing when the plugin is not there (TPL-133)', function () {
+it('fails an active Relevanssi whose index is empty and says nothing when the plugin is not there', function () {
     $check = 'Relevanssi index is built (searches find products)';
     $facts = pkdeGoodFacts();
 
@@ -582,7 +582,7 @@ it('checks Wordfence Extended Protection only for a site that opted in, and fail
     }
 });
 
-it('fails an opted-in site whose /.user.ini can be downloaded, skips what it cannot tell, and still runs on a staging site without Wordfence (WP-85 pilot)', function () {
+it('fails an opted-in site whose /.user.ini can be downloaded, skips what it cannot tell, and still runs on a staging site without Wordfence (pilot)', function () {
     $row = 'Wordfence Extended Protection: /.user.ini is not downloadable';
     $facts = pkdeGoodFacts();
     $facts['waf_prepend'] = ['enabled' => true, 'ini_target' => '/x/waf/wordfence-waf.php', 'target_exists' => true, 'target_has_bootstrap' => true];
@@ -603,7 +603,7 @@ it('fails an opted-in site whose /.user.ini can be downloaded, skips what it can
         ->and($statuses[$row])->toBe('SKIP');
 });
 
-// Search engine signals as the site answers them (WP-91): the probe rows.
+// Search engine signals as the site answers them: the probe rows.
 function pkdeSeoProbe(array $over = []): array
 {
     return array_replace_recursive([
@@ -737,7 +737,7 @@ it('cleans a Rank Math title template and plans only what differs', function () 
         ->and(pkde_rankmath_baseline(['knowledgegraph_logo' => 'https://own/logo.png', 'open_graph_image' => 'https://own/og.png'], [], ['name' => '', 'logo_url' => 'https://example.test/l.png', 'logo_id' => 7]))->not->toHaveKey('open_graph_image')->not->toHaveKey('knowledgegraph_logo');
 });
 
-it('wants real icon files and a 410 for a layered-nav query, and skips what it could not reach (TPL-184)', function () {
+it('wants real icon files and a 410 for a layered-nav query, and skips what it could not reach', function () {
     $facts = pkdeGoodFacts();
     $facts['wp_env'] = 'production';
     $facts['seo_probe'] = pkdeSeoProbe();
@@ -758,7 +758,7 @@ it('wants real icon files and a 410 for a layered-nav query, and skips what it c
     expect(pkdeStatuses($facts)['A WooCommerce layered-nav query (?filter_x=a,b&query_type_x=or) answers 410'])->toBe('SKIP');
 });
 
-it('matches layered-nav query arguments with the rule in activate-release.sh and nothing the kit sends (TPL-184)', function () {
+it('matches layered-nav query arguments with the rule in activate-release.sh and nothing the kit sends', function () {
     $script = file_get_contents(dirname(__DIR__, 2) . '/bin/deploy/activate-release.sh');
     preg_match('/RewriteCond %\{QUERY_STRING\} (\S+) \[NC\]/', $script, $m);
     $regex = '~' . str_replace('~', '\\~', $m[1]) . '~i';
@@ -771,7 +771,7 @@ it('matches layered-nav query arguments with the rule in activate-release.sh and
     }
 });
 
-it('reports which CF7 forms carry a lookup key, and fails only a key a theme file asks for that no form has (TPL-186)', function () {
+it('reports which CF7 forms carry a lookup key, and fails only a key a theme file asks for that no form has', function () {
     $facts = pkdeGoodFacts();
     $facts['cf7_forms'][0]['key'] = 'contact';
     $facts['cf7_key_usage'] = ['keys' => ['contact'], 'by_title' => []];
@@ -792,7 +792,7 @@ it('reports which CF7 forms carry a lookup key, and fails only a key a theme fil
     expect(pkdeStatuses($facts))->not->toHaveKey('CF7 forms with a lookup key (_pkde_form_key)');
 });
 
-it('fails a declared shop filter source that does not resolve, and lists the groups (WP-96)', function () {
+it('fails a declared shop filter source that does not resolve, and lists the groups', function () {
     $facts = pkdeGoodFacts();
     expect(pkdeStatuses($facts))->not->toHaveKey('Shop filters: declared groups resolve'); // no shop: no rows
 
@@ -815,7 +815,7 @@ it('fails a declared shop filter source that does not resolve, and lists the gro
     expect($info[2])->toContain('not declared')->toContain('price, product_cat');
 });
 
-it('lists kit view overrides with how far they are from the kit\'s view, INFO only (TPL-199)', function () {
+it('lists kit view overrides with how far they are from the kit\'s view, INFO only', function () {
     expect(pkde_drift_line_diff("a\nb\nc\n", "a\nb\nc\n"))->toBe(0)
         ->and(pkde_drift_line_diff("a\nb\nc\n", "  a \n\nc\nb"))->toBe(0) // whitespace and order do not count
         ->and(pkde_drift_line_diff("a\nb\n", "a\nx\ny\n"))->toBe(3);
@@ -845,7 +845,7 @@ it('lists kit view overrides with how far they are from the kit\'s view, INFO on
     exec('rm -rf ' . escapeshellarg($theme));
 });
 
-it('judges the block editor by role from the platform module (WP-100): PASS when an Editor is limited, FAIL when not, INFO when the module is absent', function () {
+it('judges the block editor by role from the platform module: PASS when an Editor is limited, FAIL when not, INFO when the module is absent', function () {
     $facts = pkdeGoodFacts();
 
     // module loaded and right
@@ -873,7 +873,7 @@ it('judges the block editor by role from the platform module (WP-100): PASS when
     expect(pkdeStatuses($facts))->not->toHaveKey('Block editor settings by role');
 });
 
-it('checks the editor catalogue and the global blocks (WP-100): no bundled patterns, Rank Math hidden, a used global block has its declaration', function () {
+it('checks the editor catalogue and the global blocks: no bundled patterns, Rank Math hidden, a used global block has its declaration', function () {
     $facts = pkdeGoodFacts();
     $facts['editor_catalog'] = ['bundled_patterns' => 0, 'rank_math_visible' => []];
     $facts['global_blocks'] = ['cta-band' => ['pages' => 3, 'declared' => true]];
@@ -898,7 +898,7 @@ it('checks the editor catalogue and the global blocks (WP-100): no bundled patte
     expect($statuses)->not->toHaveKey('Global block cta-band has its declared content')->not->toHaveKey('Block editor: Rank Math blocks hidden from the inserter')->not->toHaveKey('Block editor: no core or WooCommerce patterns registered');
 });
 
-it('checks the FAQs post type (WP-102): no public URL or sitemap entry, who manages it, the hand-typed blocks and the empty groups', function () {
+it('checks the FAQs post type: no public URL or sitemap entry, who manages it, the hand-typed blocks and the empty groups', function () {
     $facts = pkdeGoodFacts();
     $facts['faq'] = ['public' => false, 'rewrite' => false, 'has_archive' => false, 'in_sitemap' => false, 'admin_cap' => true, 'editor_cap' => false, 'seo_role' => true, 'seo_cap' => true, 'typed_blocks' => [], 'empty_groups' => []];
     $statuses = pkdeStatuses($facts);
@@ -929,7 +929,7 @@ it('checks the FAQs post type (WP-102): no public URL or sitemap entry, who mana
     expect(pkdeStatuses($facts))->not->toHaveKey('FAQs post type');
 });
 
-it('says which motion mode the site runs (WP-103), INFO only', function () {
+it('says which motion mode the site runs, INFO only', function () {
     $facts = pkdeGoodFacts();
     $facts['motion'] = 'reduced';
     $statuses = pkdeStatuses($facts);
@@ -943,7 +943,7 @@ it('says which motion mode the site runs (WP-103), INFO only', function () {
     expect(pkdeStatuses($facts))->not->toHaveKey('Motion (pkde_kit/motion)');
 });
 
-it('checks the legal documents (WP-104): Privacy and Cookies everywhere, Terms and Returns on a shop, the settings, dates and address clashes', function () {
+it('checks the legal documents: Privacy and Cookies everywhere, Terms and Returns on a shop, the settings, dates and address clashes', function () {
     $facts = pkdeGoodFacts();
     $facts['woocommerce_active'] = false;
     $facts['legal'] = ['types' => ['privacy' => 1, 'cookies' => 1], 'no_date' => [], 'privacy_setting' => 'document', 'terms_setting' => 'unset', 'clashes' => []];
@@ -979,7 +979,7 @@ it('checks the legal documents (WP-104): Privacy and Cookies everywhere, Terms a
 });
 
 
-it('checks Site details (WP-106): the type\'s required fields, stored values differing from the declaration, and a different value typed in Rank Math', function () {
+it('checks Site details: the type\'s required fields, stored values differing from the declaration, and a different value typed in Rank Math', function () {
     $facts = pkdeGoodFacts();
     $facts['site_details'] = ['type' => 'local-business', 'missing' => [], 'differs' => [], 'rank_math' => [], 'locked' => 4];
     $statuses = pkdeStatuses($facts);
@@ -1002,7 +1002,7 @@ it('checks Site details (WP-106): the type\'s required fields, stored values dif
 });
 
 
-it('says which shape the site runs (WP-108 A), INFO only', function () {
+it('says which shape the site runs, INFO only', function () {
     $facts = pkdeGoodFacts();
     $facts['shape'] = ['preset' => 'round', 'radius' => ['sm' => '0.75rem', 'md' => '1.5rem', 'lg' => '3rem', 'full' => '9999px'], 'border' => ['thin' => '1px', 'thick' => '2px']];
     expect(pkdeStatuses($facts)['Shape (corner radius and border thickness)'])->toBe('INFO');
@@ -1015,7 +1015,7 @@ it('says which shape the site runs (WP-108 A), INFO only', function () {
 });
 
 
-it('says whether the site declares the global buttons (WP-109), INFO only', function () {
+it('says whether the site declares the global buttons, INFO only', function () {
     $facts = pkdeGoodFacts();
     $facts['buttons'] = ['primary' => ['style' => 'text', 'colour' => '#353b3d'], 'secondary' => ['style' => 'outline', 'colour' => 'black'], 'text' => ['style' => 'text', 'colour' => 'black'], 'type' => [], 'hover' => 'darken'];
     expect(pkdeStatuses($facts)['Buttons (global button system)'])->toBe('INFO');
@@ -1030,7 +1030,7 @@ it('says whether the site declares the global buttons (WP-109), INFO only', func
 });
 
 
-it('warns while the kit reads the old client_* options because Site details is not migrated (TPL-277)', function () {
+it('warns while the kit reads the old client_* options because Site details is not migrated', function () {
     $facts = pkdeGoodFacts();
     $facts['site_details'] = ['type' => 'local-business', 'missing' => [], 'differs' => [], 'rank_math' => [], 'locked' => 0, 'legacy' => ['phones', 'emails']];
 

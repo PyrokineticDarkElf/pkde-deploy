@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Brings a site's server .env in line with its 1Password secure note (WP-87). A DRY RUN unless --apply: it lists variable NAMES only (never a value) and writes nothing.
+# Brings a site's server .env in line with its 1Password secure note. A DRY RUN unless --apply: it lists variable NAMES only (never a value) and writes nothing.
 #
 #   env-pull.sh <host> --env staging|prod --vault "<vault>" [--account <account>] [--example .env.example]            dry run
 #   env-pull.sh <host> --env staging|prod --vault "<vault>" --check                                                  changes nothing; exit 1 if the server and the note differ (names only in .env.example are INFO)

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Test for gate_curl in bin/deploy/activate-release.sh (TPL-259, tcs staging): every web request of a switch or a rollback authenticates through the staging gate with
+# Test for gate_curl in bin/deploy/activate-release.sh (tcs staging): every web request of a switch or a rollback authenticates through the staging gate with
 # STAGING_GATE_AUTH, and the credentials are never on a command line or in a printed URL. A fake curl records what it is given; no network.
 
 set -uo pipefail

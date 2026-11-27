@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Which Contact Form 7 forms get which lookup key (TPL-186, WP-83). Pure: no WordPress calls, so the script (cf7-form-key.php) and the tests share it.
+ * Which Contact Form 7 forms get which lookup key. Pure: no WordPress calls, so the script (cf7-form-key.php) and the tests share it.
  *
  * A key is stored on the form post as meta `_pkde_form_key` and is found by the kit's App\form_id('key'); the form's title stays free to rename.
  *

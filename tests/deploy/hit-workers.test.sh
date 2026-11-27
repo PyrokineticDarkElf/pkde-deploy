@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Test for hit_all_workers in bin/deploy/activate-release.sh (TPL-271, tcs staging): when every parallel probe request reaches a worker of its own the pool may have more workers
+# Test for hit_all_workers in bin/deploy/activate-release.sh (tcs staging): when every parallel probe request reaches a worker of its own the pool may have more workers
 # than requests, so the probe is requested again with twice as many until a worker answers twice (the pool is covered) or the cap. A fake gate_curl plays a pool of N workers;
 # no network.
 

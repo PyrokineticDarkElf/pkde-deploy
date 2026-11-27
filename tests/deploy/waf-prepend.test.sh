@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Test for bin/deploy/waf-prepend.sh (WP-85): Wordfence Extended Protection written at paths that survive releases. Checks: nothing happens without the opt-in; with it the
+# Test for bin/deploy/waf-prepend.sh: Wordfence Extended Protection written at paths that survive releases. Checks: nothing happens without the opt-in; with it the
 # shim lands in shared/waf and web/.user.ini gets Wordfence's own marked block; the shim is valid PHP, includes the bootstrap through the stable `current` path, defines
 # WFWAF_LOG_PATH from the .env value (else shared/wflogs/), and does NOTHING (no error) when the plugin is gone; a second run changes nothing; another auto_prepend_file
 # in an existing .user.ini is commented out and other lines are kept; turning the flag off removes only our block; a release without Wordfence is left alone; a path with a
