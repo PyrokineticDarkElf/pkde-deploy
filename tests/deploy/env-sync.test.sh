@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Test for bin/deploy/env-pull.sh and env-seed.sh (WP-87) with a fake `op` and a fake `ssh` (it runs the REAL remote command in a temp directory): no network, no real
+# Test for bin/deploy/env-pull.sh and env-seed.sh with a fake `op` and a fake `ssh` (it runs the REAL remote command in a temp directory): no network, no real
 # secrets. The values are canary strings, so a leak into the output or onto a command line is caught. Checks: a dry run writes nothing and prints names only; an
 # incomplete note is refused; --check; --apply keeps a backup, changes in place, appends new variables, keeps server-only variables unless --prune; quotes and ${...}
 # round-trip; production needs --production-go; seed sends the item on stdin only and refuses an existing item.
@@ -188,7 +188,7 @@ check "seed always creates both address fields (empty, concealed, WP Admin) and 
 # 11. a missing ssh name is a usage error
 rm -f "$T/item.json"; (unset STAGING_SSH_HOST; "$SEED" "${ARGS[@]}" >/dev/null 2>&1; check "missing STAGING_SSH_HOST" "$?" "2")
 
-# 12. the probe after a write retries once (a cold first render, WP-87 on jsd staging) and calls a persistent failure a failure
+# 12. the probe after a write retries once (a cold first render on jsd staging) and calls a persistent failure a failure
 cat > "$T/probe.py" <<'PYEOF'
 import importlib.util, sys, threading, http.server
 spec = importlib.util.spec_from_file_location('envsync', sys.argv[1]); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)

@@ -1,7 +1,7 @@
 <?php
 
 /**
- * bin/deploy/faq-migrate.php (WP-102), the pure parts in faq-migrate-lib.php. The two steps against a real WordPress (seeded old-style pages, plan, apply, a second apply,
+ * bin/deploy/faq-migrate.php, the pure parts in faq-migrate-lib.php. The two steps against a real WordPress (seeded old-style pages, plan, apply, a second apply,
  * the refusals) were run on the template stack; the report says so.
  */
 require_once dirname(__DIR__, 2) . '/bin/deploy/faq-migrate-lib.php';
@@ -225,7 +225,7 @@ it('says in the script how details, synced patterns and loose Details are handle
     expect($source)->toContain('PKDE_FAQ_KIND_DETAILS', "'wp_block'", 'used by:', 'CHECK BY HAND', 'pkde_faq_loose_details', "post_content LIKE '%wp:details%'", 'consumesHeading');
 });
 
-/** TPL-252: a FAQ heading anywhere in the nearest Section (or top-level Group) heads a Details run that has no heading of its own. */
+/** a FAQ heading anywhere in the nearest Section (or top-level Group) heads a Details run that has no heading of its own. */
 $pkdeGroup = fn(array $inner, array $attrs = []) => ['blockName' => 'core/group', 'attrs' => $attrs, 'innerBlocks' => $inner, 'innerHTML' => '', 'innerContent' => []];
 $pkdePara = fn(string $t) => ['blockName' => 'core/paragraph', 'attrs' => [], 'innerBlocks' => [], 'innerHTML' => "<p>$t</p>"];
 $pkdeFaq = ['blockName' => 'sage/faq', 'attrs' => ['groups' => [1]], 'innerBlocks' => [], 'innerHTML' => '', 'innerContent' => []];

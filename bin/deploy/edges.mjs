@@ -1,4 +1,4 @@
-// Content-edge check (MGR-62): the header, the page containers, a Section's content and the footer must start and end at the same x.
+// Content-edge check: the header, the page containers, a Section's content and the footer must start and end at the same x.
 //
 //   node edges.mjs --url http://localhost:8092 [--paths /,/about/,/404-test/] [--widths 1440,390] [--tolerance 1] --chrome PATH
 //
@@ -106,7 +106,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
           }
         });
         // The painted box (a border, a background, a card) of a block in the page content grid must sit on the header's content edges when it
-        // spans the page measure: text that lines up under a box that sticks out 24px each side still looks misaligned (bp, MGR-62). A narrower
+        // spans the page measure: text that lines up under a box that sticks out 24px each side still looks misaligned (bp). A narrower
         // callout inside the prose column is by design and not checked.
         if (header) {
           const h = content(header);

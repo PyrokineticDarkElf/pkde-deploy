@@ -65,7 +65,7 @@ function pkde_drift_wordfence_standard(): array
         'alertOn_firstAdminLoginOnly' => '1', 'alertOn_wordfenceDeactivated' => '1', 'alertOn_wafDeactivated' => '1',
         'alertOn_scanIssues' => '1', 'scansEnabled_plugins' => '1', 'scansEnabled_themes' => '1',
         'alert_maxHourly' => '3', 'email_summary_enabled' => '1', 'email_summary_interval' => 'weekly',
-        // Prevent discovery of usernames through ?author=N and the REST users list (WP-88; Wordfence's default, now part of the standard and set by every release)
+        // Prevent discovery of usernames through ?author=N and the REST users list (Wordfence's default, now part of the standard and set by every release)
         'loginSec_disableAuthorScan' => '1',
     ];
 }
@@ -91,7 +91,7 @@ function pkde_drift_is_placeholder_email(string $email): bool
 
 /**
  * Theme view files that read per-visitor data on the server (the basket, a pending notice, a cookie, the user): each one is a leak when the page
- * cache serves visitors with a basket (MGR-76). Read only; the kit's own views live in the package, not here. Returns paths relative to $dir.
+ * cache serves visitors with a basket. Read only; the kit's own views live in the package, not here. Returns paths relative to $dir.
  *
  * @return list<string>
  */
@@ -126,7 +126,7 @@ function pkde_drift_line_diff(string $a, string $b): int
 }
 
 /**
- * The theme's overrides of kit views (resources/views/vendor/pkde-kit/**) against the kit's current view of the same path (TPL-199): how many lines differ, and whether
+ * The theme's overrides of kit views (resources/views/vendor/pkde-kit/**) against the kit's current view of the same path: how many lines differ, and whether
  * the override is identical to the kit's (then it can be deleted). A copy of a view falls behind the kit without any test failing (bb's category tiles lost the "Shop all"
  * tile, tcs's product card lost the rating position); this makes it visible. Read only. Returns path => lines that differ (0 = identical), or null when there is no kit.
  *
@@ -155,7 +155,7 @@ function pkde_drift_kit_overrides(string $themeDir): ?array
 }
 
 /**
- * The Contact Form 7 lookup keys the theme asks for (App\form_id('x'), App\form_shortcode('x')) and the files that still find a form by its title (TPL-186).
+ * The Contact Form 7 lookup keys the theme asks for (App\form_id('x'), App\form_shortcode('x')) and the files that still find a form by its title.
  * Read only; scans the theme's PHP and Blade files in the given directories. Returns ['keys' => list<string>, 'by_title' => list<string> relative paths].
  *
  * @return array{keys: list<string>, by_title: list<string>}
@@ -206,7 +206,7 @@ function pkde_drift_breadcrumb_facts(): array
 }
 
 /**
- * What the platform's editor-settings module (WP-100) does for someone who is not an Administrator, asked of the real filters. A WP-CLI run has no
+ * What the platform's editor-settings module does for someone who is not an Administrator, asked of the real filters. A WP-CLI run has no
  * user, which is exactly the "not an Administrator" case. Null when the module is not loaded (an older platform release, or switched off).
  *
  * @return array{can_lock: bool, custom_colors: bool, remote_patterns: bool, blocks_limited: bool, shortcode: bool}|null
@@ -230,7 +230,7 @@ function pkde_drift_editor_settings_facts(): ?array
 }
 
 /**
- * The block editor's bundled patterns and Rank Math's blocks (WP-100): how many WordPress or WooCommerce patterns are still registered, and whether every registered
+ * The block editor's bundled patterns and Rank Math's blocks: how many WordPress or WooCommerce patterns are still registered, and whether every registered
  * Rank Math block is hidden from the inserter. Null for each part that does not apply (no platform module, no Rank Math blocks).
  *
  * @return array{bundled_patterns: ?int, rank_math_visible: ?list<string>}
@@ -256,7 +256,7 @@ function pkde_drift_editor_catalog_facts(): array
 }
 
 /**
- * The global blocks (tier 3, WP-100) a site uses and what it declares for them: a block printed on published pages with nothing declared prints nothing.
+ * The global blocks (tier 3) a site uses and what it declares for them: a block printed on published pages with nothing declared prints nothing.
  *
  * @return array<string, array{pages: int, declared: bool}> block name => pages using it, and whether config/pkde-sections.php has its text
  */
@@ -279,7 +279,7 @@ function pkde_drift_global_blocks_facts(): array
 }
 
 /**
- * Site details (WP-106, platform module site-details): the declared type, what the type still needs, the stored values that differ from the declaration, and the values typed
+ * Site details (platform module site-details): the declared type, what the type still needs, the stored values that differ from the declaration, and the values typed
  * separately in Rank Math that differ from Site details (read from the database, not through the module's feed). Null when the module is not loaded.
  */
 function pkde_drift_site_details_facts(): ?array
@@ -331,13 +331,13 @@ function pkde_drift_site_details_facts(): ?array
         'differs' => $differs,
         'rank_math' => $rank,
         'locked' => count($declaration['locked']),
-        // the groups the kit reads from the old client_* options because Site details holds nothing for them (TPL-277); [] for a kit without the fallback
+        // the groups the kit reads from the old client_* options because Site details holds nothing for them; [] for a kit without the fallback
         'legacy' => function_exists('App\\site_details_legacy_fallbacks') ? \App\site_details_legacy_fallbacks() : [],
     ];
 }
 
 /**
- * The legal documents (WP-104, platform module legal): what is published by type, the two settings that may point at a document, the documents with no effective date,
+ * The legal documents (platform module legal): what is published by type, the two settings that may point at a document, the documents with no effective date,
  * and any address a Page and a document share. Null when the post type is not registered (an older platform, or the module is switched off).
  */
 function pkde_drift_legal_facts(): ?array
@@ -383,7 +383,7 @@ function pkde_drift_legal_facts(): ?array
 }
 
 /**
- * The FAQs post type (WP-102, platform module faq): that it has no public URL, archive or sitemap entry, who may manage it, the FAQ blocks still typed by hand, and the
+ * The FAQs post type (platform module faq): that it has no public URL, archive or sitemap entry, who may manage it, the FAQ blocks still typed by hand, and the
  * groups with no FAQ. Null when the post type is not registered (an older platform, or the module is switched off).
  *
  * @return array<string, mixed>|null
@@ -392,7 +392,7 @@ function pkde_drift_legal_facts(): ?array
 function pkde_drift_buttons_facts(string $themeDir): array|false|null
 {
     if (! is_file($themeDir . '/resources/generated/shape.php')) {
-        return null; // no shape file either: a kit older than WP-108
+        return null; // no shape file either: a kit older than
     }
 
     $file = $themeDir . '/resources/generated/buttons.php';
@@ -491,7 +491,7 @@ function pkde_drift_evaluate(array $f): array
         $add($ok ? 'PASS' : ($devSkip && $dev ? 'SKIP' : 'FAIL'), $check, $ok ? '' : $detail);
     };
 
-    // The environment as .env declares it (MGR-67, bp): a .env split between environments (a production WP_ENV with a staging
+    // The environment as .env declares it (bp): a .env split between environments (a production WP_ENV with a staging
     // DISALLOW_INDEXING, or a staging file copied to production) looks clean row by row. Only when the facts carry WP_ENV.
     if (array_key_exists('wp_env', $f)) {
         $wpEnv = (string) $f['wp_env'];
@@ -508,7 +508,7 @@ function pkde_drift_evaluate(array $f): array
         }
     }
 
-    // Some staging sites run Wordfence and some do not (rp, tcs, mds, jsd and cs have it active; WP-85/WP-88 facts, 2026-11-13). Inactive on staging is a SKIP, not a FAIL,
+    // Some staging sites run Wordfence and some do not (rp, tcs, mds, jsd and cs have it active; facts, 2026-11-13). Inactive on staging is a SKIP, not a FAIL,
     // and only while it really is inactive. An ACTIVE Wordfence on staging is held to the whole standard, loginSec_disableAuthorScan included.
     $wfOffOnStaging = ($f['env'] ?? '') === 'staging' && ! in_array('wordfence', (array) ($f['active_plugins'] ?? []), true);
 
@@ -525,7 +525,7 @@ function pkde_drift_evaluate(array $f): array
         }
         $alertAddress = pkde_alert_address((string) ($f['alert_email_const'] ?? ''), (string) ($f['wp_admin_email'] ?? ''));
         if ($alertAddress !== '') {
-            // The .env names the alert address (WP-87): Wordfence's recipients are exactly it. No address is printed.
+            // The .env names the alert address: Wordfence's recipients are exactly it. No address is printed.
             $cmp(
                 'Wordfence alertEmails is exactly the alert address (WORDFENCE_ALERT_EMAIL, else WP_ADMIN_EMAIL)',
                 pkde_alert_emails_exact((string) ($wf['alertEmails'] ?? ''), $alertAddress),
@@ -557,7 +557,7 @@ function pkde_drift_evaluate(array $f): array
         $uriMissing = array_diff(pkde_w3tc_reject_uris(), (array) ($w3['reject_uris'] ?? []));
         $cmp('W3TC page cache never caches robots.txt or the sitemaps', $uriMissing === [], 'missing from Never cache the following pages: ' . implode(', ', $uriMissing) . ' (re-run bin/deploy/w3tc-settings.php, then fix_environment)', true);
         if (! empty($f['woocommerce_active'])) {
-            // Default: the basket cookies skip the page cache. Opted in (pkde_cache_basket_visitors = 1, MGR-76): they must NOT, or the opt-in does nothing.
+            // Default: the basket cookies skip the page cache. Opted in (pkde_cache_basket_visitors = 1): they must NOT, or the opt-in does nothing.
             if (! empty($f['cache_basket_visitors'])) {
                 $rejected = array_intersect(pkde_w3tc_basket_cookies(), (array) ($w3['reject_cookies'] ?? []));
                 $cmp('W3TC page cache serves visitors with a basket (opted in)', $rejected === [], 'still rejected: ' . implode(', ', $rejected) . ' (re-run bin/deploy/w3tc-settings.php)', true);
@@ -602,9 +602,9 @@ function pkde_drift_evaluate(array $f): array
         $cmp('Rank Math is registered (registration skipped or account connected)', ! empty($rm['skip']) || ! empty($rm['connected']), 'neither rank_math_registration_skip nor a connected account: Rank Math disables its modules (sitemap, titles, schema); run `wp option update rank_math_registration_skip 1`');
     }
 
-    // Relevanssi (the shop's search, TPL-133): installed but never indexed, it answers every search with nothing. settings script: the kit's
+    // Relevanssi (the shop's search): installed but never indexed, it answers every search with nothing. settings script: the kit's
     // bin/relevanssi-settings.php rebuilds the index. Only while the plugin is active; the fact is the number of rows in its index table.
-    // Wordfence Extended Protection (WP-85), only for a site that opted in with WORDFENCE_EXTENDED_PROTECTION=1: web/.user.ini must point at the shim in shared/waf
+    // Wordfence Extended Protection, only for a site that opted in with WORDFENCE_EXTENDED_PROTECTION=1: web/.user.ini must point at the shim in shared/waf
     // (the row reads files and one URL, not Wordfence itself, so it also runs on a staging site where Wordfence is inactive: that is where the pilot proves the mechanism)
     if (is_array($f['waf_prepend'] ?? null) && ! empty($f['waf_prepend']['enabled'])) {
         $wp = $f['waf_prepend'];
@@ -620,7 +620,7 @@ function pkde_drift_evaluate(array $f): array
         }
     }
 
-    // Shop filters (WP-96): the groups a shop declares in config/shop-filters.php must all resolve; an INFO row lists them so a change between releases shows.
+    // Shop filters: the groups a shop declares in config/shop-filters.php must all resolve; an INFO row lists them so a change between releases shows.
     if (! empty($f['woocommerce_active']) && is_array($f['shop_filters'] ?? null)) {
         $sf = $f['shop_filters'];
         $missing = (array) ($sf['invalid'] ?? []);
@@ -628,7 +628,7 @@ function pkde_drift_evaluate(array $f): array
         $add('INFO', 'Shop filters: groups', ((bool) ($sf['declared'] ?? false) ? 'declared' : 'not declared (the kit\'s defaults)') . ': ' . implode(', ', (array) ($sf['groups'] ?? [])));
     }
 
-    // REST users (WP-88): an anonymous GET of the user routes must not list anybody (401, 403 or 404; the platform module rest-users-private answers 404 in every environment)
+    // REST users: an anonymous GET of the user routes must not list anybody (401, 403 or 404; the platform module rest-users-private answers 404 in every environment)
     if (is_array($f['rest_users'] ?? null)) {
         foreach (['list' => '/wp/v2/users', 'single' => '/wp/v2/users/<id>'] as $key => $route) {
             if (! array_key_exists($key, $f['rest_users']) || $f['rest_users'][$key] === null) {
@@ -639,7 +639,7 @@ function pkde_drift_evaluate(array $f): array
         }
     }
 
-    // Author archives (WP-88): closed for users without an allowed role by the platform module; INFO when real authors lack the role (their archive is a 404 by design)
+    // Author archives: closed for users without an allowed role by the platform module; INFO when real authors lack the role (their archive is a 404 by design)
     if (is_array($f['author_archive'] ?? null)) {
         $aa = $f['author_archive'];
         $cmp('Author archives are closed for users without an allowed role (platform module author-archives)', ! empty($aa['module']), 'the pkde-platform module author-archives is not loaded: bump pkde/platform to 2026.11.13 or later');
@@ -653,14 +653,14 @@ function pkde_drift_evaluate(array $f): array
         }
     }
 
-    // The Rank Math baseline (WP-91): an existing site sees what differs from where a new site starts (bin/deploy/rankmath-baseline.php sets it).
+    // The Rank Math baseline: an existing site sees what differs from where a new site starts (bin/deploy/rankmath-baseline.php sets it).
     if (is_array($f['rankmath_seo'] ?? null)) {
         foreach (pkde_rankmath_findings((array) $f['rankmath_seo']['titles'], (array) $f['rankmath_seo']['post_types'], (string) $f['rankmath_seo']['locale'], (string) ($f['rankmath_seo']['want_locale'] ?? PKDE_RANKMATH_LOCALE)) as [$check, $ok, $detail]) {
             $cmp($check, $ok, $detail . ' (read it, then run bin/deploy/rankmath-baseline.php, or change the value on purpose and say why)', true);
         }
     }
 
-    // Search engine signals as the site really answers them (WP-91): requests the check makes to the site's own address. A probe that did not get a 200
+    // Search engine signals as the site really answers them: requests the check makes to the site's own address. A probe that did not get a 200
     // (a staging gate, a firewall, no loopback DNS) is a SKIP naming what it got, never a FAIL.
     if (is_array($f['seo_probe'] ?? null)) {
         $sp = $f['seo_probe'];
@@ -743,7 +743,7 @@ function pkde_drift_evaluate(array $f): array
         $cmp('Relevanssi index is built (searches find products)', (int) $f['relevanssi_indexed'] > 0, 'the Relevanssi index is empty: run bash bin/deploy/wp.sh eval-file bin/deploy/relevanssi-settings.php (it rebuilds the index)', true);
     }
 
-    // Breadcrumbs (MGR-77 parity): the kit owns the trail. Its filters force Rank Math's settings to the standard (" / ", "Home") and the kit declares
+    // Breadcrumbs (parity): the kit owns the trail. Its filters force Rank Math's settings to the standard (" / ", "Home") and the kit declares
     // theme support so the module is on whatever the wp-admin setting says. The kit builds no trail of its own (owner, 2026-11-06).
     // Sites on a kit older than 2026.11.06.3 have no standard: their trail follows each site's own Rank Math settings.
     $bc = $f['breadcrumbs'] ?? null;
@@ -789,7 +789,7 @@ function pkde_drift_evaluate(array $f): array
         }
     }
 
-    // Kit view overrides (TPL-199): INFO only. A copy of a kit view falls behind the kit without a test failing; the row lists each with how many lines differ.
+    // Kit view overrides: INFO only. A copy of a kit view falls behind the kit without a test failing; the row lists each with how many lines differ.
     if (is_array($f['kit_overrides'] ?? null) && $f['kit_overrides'] !== []) {
         $listed = [];
         foreach ($f['kit_overrides'] as $path => $differ) {
@@ -798,7 +798,7 @@ function pkde_drift_evaluate(array $f): array
         $add('INFO', 'Kit view overrides', count($listed) . ': ' . implode('; ', $listed));
     }
 
-    // The editor's catalogue (WP-100): no WordPress or WooCommerce patterns, Rank Math's blocks hidden from the inserter. Only when the facts carry the key.
+    // The editor's catalogue: no WordPress or WooCommerce patterns, Rank Math's blocks hidden from the inserter. Only when the facts carry the key.
     if (array_key_exists('editor_catalog', $f) && is_array($f['editor_catalog'])) {
         $c = $f['editor_catalog'];
         if ($c['bundled_patterns'] !== null) {
@@ -809,7 +809,7 @@ function pkde_drift_evaluate(array $f): array
         }
     }
 
-    // The global button system (WP-109, `buttons` in config/brand-palette.json): INFO only. Only when the facts carry the key; false is a site that declares none (the roles of each
+    // The global button system (`buttons` in config/brand-palette.json): INFO only. Only when the facts carry the key; false is a site that declares none (the roles of each
     // section and card draw its buttons), null a kit without the system.
     if (array_key_exists('buttons', $f)) {
         $b = $f['buttons'];
@@ -819,7 +819,7 @@ function pkde_drift_evaluate(array $f): array
                 : 'declared: primary ' . ($b['primary']['style'] ?? '?') . ' ' . ($b['primary']['colour'] ?? '?') . ', secondary ' . ($b['secondary']['style'] ?? '?') . ' ' . ($b['secondary']['colour'] ?? '?') . ', text ' . ($b['text']['style'] ?? '?') . ' ' . ($b['text']['colour'] ?? '?') . '; hover ' . ($b['hover'] ?? '?')));
     }
 
-    // The shape (WP-108 A, shape in config/brand-palette.json): INFO only, which preset the site runs and its radii. Only when the facts carry the key; null is a kit without shape tokens.
+    // The shape (shape in config/brand-palette.json): INFO only, which preset the site runs and its radii. Only when the facts carry the key; null is a kit without shape tokens.
     if (array_key_exists('shape', $f)) {
         $sh = $f['shape'];
         $add('INFO', 'Shape (corner radius and border thickness)', $sh === null
@@ -827,12 +827,12 @@ function pkde_drift_evaluate(array $f): array
             : 'is ' . (string) ($sh['preset'] ?? '?') . ' (radius ' . implode(' / ', array_map(fn($k) => $k . ' ' . ($sh['radius'][$k] ?? '?'), ['sm', 'md', 'lg', 'full'])) . '; border ' . ($sh['border']['thin'] ?? '?') . ' / ' . ($sh['border']['thick'] ?? '?') . ')');
     }
 
-    // The motion switch (WP-103, pkde_kit/motion): INFO only, which mode the site runs. Only when the facts carry the key; null is a kit without the motion system.
+    // The motion switch (pkde_kit/motion): INFO only, which mode the site runs. Only when the facts carry the key; null is a kit without the motion system.
     if (array_key_exists('motion', $f)) {
         $add('INFO', 'Motion (pkde_kit/motion)', $f['motion'] === null ? 'the kit has no motion switch yet (an older pkde/sage-kit)' : 'is ' . $f['motion'] . ($f['motion'] === 'on' ? ' (hover, press and reveal on scroll)' : ($f['motion'] === 'reduced' ? ' (hover and press, no reveal)' : ' (nothing moves)')));
     }
 
-    // FAQs (WP-102): the post type is not a public thing, the right people manage it, the old hand-typed blocks and empty groups are listed. Only when the facts carry the key.
+    // FAQs: the post type is not a public thing, the right people manage it, the old hand-typed blocks and empty groups are listed. Only when the facts carry the key.
     if (array_key_exists('faq', $f)) {
         $q = $f['faq'];
         if (! is_array($q)) {
@@ -855,7 +855,7 @@ function pkde_drift_evaluate(array $f): array
         }
     }
 
-    // Site details (WP-106): the type's required fields are present, a stored value that differs from the declaration is listed, and a value typed separately in Rank Math that
+    // Site details: the type's required fields are present, a stored value that differs from the declaration is listed, and a value typed separately in Rank Math that
     // differs from Site details is flagged (Site details overrides it in the output). Only when the facts carry the key.
     if (array_key_exists('site_details', $f)) {
         $sd = $f['site_details'];
@@ -875,7 +875,7 @@ function pkde_drift_evaluate(array $f): array
         }
     }
 
-    // Legal documents (WP-104): Privacy and Cookies published on every site, Terms and Returns on a shop, the core privacy setting and the WooCommerce terms setting pointing at a
+    // Legal documents: Privacy and Cookies published on every site, Terms and Returns on a shop, the core privacy setting and the WooCommerce terms setting pointing at a
     // published document, an effective date on each, no address shared with a Page. Only when the facts carry the key.
     if (array_key_exists('legal', $f)) {
         $l = $f['legal'];
@@ -904,7 +904,7 @@ function pkde_drift_evaluate(array $f): array
         }
     }
 
-    // The block editor by role (WP-100, platform module editor-settings): what a non-Administrator is offered. Only when the facts carry the key
+    // The block editor by role (platform module editor-settings): what a non-Administrator is offered. Only when the facts carry the key
     // (an older drift run does not); a platform without the module is an INFO row, not a failure.
     if (array_key_exists('editor_settings', $f)) {
         $e = $f['editor_settings'];
@@ -918,7 +918,7 @@ function pkde_drift_evaluate(array $f): array
         }
     }
 
-    // Form lookup keys (TPL-186): INFO for which forms carry one; FAIL only when a theme file asks App\form_id('x') and no form has that key; INFO for a title lookup left over.
+    // Form lookup keys: INFO for which forms carry one; FAIL only when a theme file asks App\form_id('x') and no form has that key; INFO for a title lookup left over.
     if ($f['cf7_active'] ?? false) {
         $tagged = [];
         foreach ($f['cf7_forms'] ?? [] as $form) {
@@ -1041,7 +1041,7 @@ function pkde_drift_waf_prepend_facts(): array
 
 /**
  * The shop filter declaration as the kit resolved it: whether the site declares its groups, the groups that resolved (sources, in the sidebar's order) and the
- * declared sources that did not. Null when WooCommerce or a kit with the declaration (WP-96) is absent. Read only.
+ * declared sources that did not. Null when WooCommerce or a kit with the declaration is absent. Read only.
  *
  * @return array{declared: bool, groups: list<string>, invalid: list<string>}|null
  */
@@ -1122,13 +1122,13 @@ function pkde_drift_http(string $url): array
 }
 
 /**
- * What search engines are told, as the site answers its own address (WP-91): home, robots.txt, a static file, a faceted shop URL and the sitemap's
+ * What search engines are told, as the site answers its own address: home, robots.txt, a static file, a faceted shop URL and the sitemap's
  * entries. Counts and labels only; no body is kept except robots.txt (public) and the meta robots result.
  */
 function pkde_drift_seo_probe(): array
 {
     $out = ['home' => pkde_drift_http(home_url('/')), 'robots_txt' => pkde_drift_http(home_url('/robots.txt')), 'static' => pkde_drift_http(includes_url('images/blank.gif'))];
-    // Icons Apache must serve itself (a WordPress-served /favicon.ico boots PHP for every browser and bot) and the layered-nav flood rule (TPL-184).
+    // Icons Apache must serve itself (a WordPress-served /favicon.ico boots PHP for every browser and bot) and the layered-nav flood rule.
     $out['favicon'] = pkde_drift_http(home_url('/favicon.ico'));
     $out['apple_touch'] = pkde_drift_http(home_url('/apple-touch-icon.png'));
     $out['flood'] = pkde_drift_http(add_query_arg(['filter_pkdeprobe' => 'a,b', 'query_type_pkdeprobe' => 'or'], home_url('/')));

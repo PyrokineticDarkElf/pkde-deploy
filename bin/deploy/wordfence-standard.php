@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Release step (WP-87, WP-88): two Wordfence settings every release re-asserts: loginSec_disableAuthorScan on (no username discovery through ?author=N or the REST
+ * Release step: two Wordfence settings every release re-asserts: loginSec_disableAuthorScan on (no username discovery through ?author=N or the REST
  * users list), and the alert recipients are EXACTLY the effective alert address from .env, re-asserted on every release by activate-release.sh
  * (`wp --skip-plugins --skip-themes eval-file bin/deploy/wordfence-standard.php`). The address is WORDFENCE_ALERT_EMAIL, else WP_ADMIN_EMAIL (alert-email.php). Wordfence
  * keeps alertEmails in its own table, so a constant cannot supply it; it is written with plain SQL (wfconfig-sql.php) so no plugin is loaded for it. A site that sets
@@ -19,7 +19,7 @@ if ($table === '') {
     return;
 }
 
-// "Prevent discovery of usernames" (?author=N and the REST users list for anonymous visitors) is part of the standard (WP-88).
+// "Prevent discovery of usernames" (?author=N and the REST users list for anonymous visitors) is part of the standard.
 if (pkde_wfconfig_get($table, 'loginSec_disableAuthorScan') === '1') {
     echo "Wordfence loginSec_disableAuthorScan: already on.\n";
 } else {

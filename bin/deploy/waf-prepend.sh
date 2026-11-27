@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Wordfence "Extended Protection" for a Bedrock release layout (WP-85): the firewall runs BEFORE WordPress through PHP's auto_prepend_file, set in the docroot's
+# Wordfence "Extended Protection" for a Bedrock release layout: the firewall runs BEFORE WordPress through PHP's auto_prepend_file, set in the docroot's
 # .user.ini (PHP-FPM / CGI on 20i). Wordfence's own installer writes the prepend file and .user.ini into WordPress' directory, inside the current RELEASE, with
 # the release's real path: the next release prunes that directory, the path dangles, and PHP fails on every request ("Failed opening required"). So this
 # script, run by activate-release.sh on every release, keeps the two pieces at paths that never change:
@@ -14,7 +14,7 @@
 # turned off). It touches nothing outside <shared>/waf and <release>/web/.user.ini, prints no value from .env and exits 0 unless it cannot write.
 #
 # Usage: waf-prepend.sh <release_dir> <shared_dir> <current_link>
-#        waf-prepend.sh --rollback <shared_dir> <current_link>   the one-command rollback (WP-85 pilot): sets WORDFENCE_EXTENDED_PROTECTION=0 in <shared>/.env
+#        waf-prepend.sh --rollback <shared_dir> <current_link>   the one-command rollback (pilot): sets WORDFENCE_EXTENDED_PROTECTION=0 in <shared>/.env
 #                                                                  and removes ONLY Wordfence's block from the live release's web/.user.ini (the pkde opcache block
 #                                                                  stays; deleting the whole file would drop it). PHP stops prepending within user_ini.cache_ttl.
 set -uo pipefail

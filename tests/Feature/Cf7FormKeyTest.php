@@ -1,6 +1,6 @@
 <?php
 
-// TPL-186: Contact Form 7 forms found by a key. The plan and the scan are pure; the script runs in a separate PHP process against small stand-ins.
+// Contact Form 7 forms found by a key. The plan and the scan are pure; the script runs in a separate PHP process against small stand-ins.
 require_once dirname(__DIR__, 2) . '/bin/deploy/cf7-form-key-standard.php';
 
 function pkdeForms(array ...$rows): array

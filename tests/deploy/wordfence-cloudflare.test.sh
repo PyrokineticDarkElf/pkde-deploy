@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Test for bin/deploy/wordfence-cloudflare.sh (WP-84) with a fake `ssh` (it runs the REAL remote command in a temp directory) and a fake `php83`: the PHP must reach the
+# Test for bin/deploy/wordfence-cloudflare.sh with a fake `ssh` (it runs the REAL remote command in a temp directory) and a fake `php83`: the PHP must reach the
 # host as ssh STDIN, never on the remote command line (20i closed sessions at inline `wp eval '...'` commands); WP-CLI runs with --skip-plugins --skip-themes, a memory
 # limit and eval-file; the temporary files are removed whatever happens; the output is read back; the exit code of the PHP is the script's exit code; the ssh names are
 # required.

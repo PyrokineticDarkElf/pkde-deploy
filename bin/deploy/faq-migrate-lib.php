@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The pure parts of bin/deploy/faq-migrate.php (WP-102): finding the FAQ blocks of a page, their questions and a stable hash for each, the inventory rows, the mapping
+ * The pure parts of bin/deploy/faq-migrate.php: finding the FAQ blocks of a page, their questions and a stable hash for each, the inventory rows, the mapping
  * file's checks, and the conversion of an answer's HTML to block markup. No WordPress call is made here except through the callables the caller passes, so Pest tests it.
  */
 

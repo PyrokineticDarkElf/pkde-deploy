@@ -1,6 +1,6 @@
 <?php
 
-// TPL-201: rankmath-baseline.php only=titles|schema|share-image applies one part of the baseline. The script needs WordPress and Rank Math, so it runs in a
+// rankmath-baseline.php only=titles|schema|share-image applies one part of the baseline. The script needs WordPress and Rank Math, so it runs in a
 // separate PHP process against small stand-ins (a global stand-in for get_option would make drift-check.php, loaded by another test, believe WordPress is there).
 require_once dirname(__DIR__, 2) . '/bin/deploy/rankmath-standard.php';
 

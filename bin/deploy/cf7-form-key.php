@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Tags Contact Form 7 forms with a stable lookup key (TPL-186, WP-83), so a theme finds a form with App\form_id('key') and a rename of the form never breaks it.
+ * Tags Contact Form 7 forms with a stable lookup key, so a theme finds a form with App\form_id('key') and a rename of the form never breaks it.
  * The key is stored on the form post as meta `_pkde_form_key`. Several forms in one run; each form is tagged once; running it again changes nothing. It prints the key
  * and the form ID, nothing else, and writes one post meta per new tag.
  *

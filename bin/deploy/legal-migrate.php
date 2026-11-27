@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Moves a site's legal Pages (privacy, cookies, terms, returns ...) into the legal documents post type, `pkde_legal` (WP-104). Run it with WP-CLI's eval-file, in two steps:
+ * Moves a site's legal Pages (privacy, cookies, terms, returns ...) into the legal documents post type, `pkde_legal`. Run it with WP-CLI's eval-file, in two steps:
  *
  *   plan   (read-only)  lists the Pages that look legal (by slug or title, plus the ones chosen as the core Privacy Policy page and the WooCommerce Terms page) with ID, title, slug,
  *                       address, status and a proposed type. The site's agent confirms the list in its report and the owner approves it as a file.

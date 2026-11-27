@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Keeps a site's server .env and its 1Password secure note in step (WP-87). Called by env-pull.sh and env-seed.sh; see those for usage.
+Keeps a site's server .env and its 1Password secure note in step. Called by env-pull.sh and env-seed.sh; see those for usage.
 
 The note: one SECURE_NOTE per site and environment, titled "<host> .env", one field per variable, the field's label is the variable name and its value is
 the LITERAL right-hand side of the .env line (quotes and ${...} included), so a pull and a seed lose nothing. Sections group the fields like .env.example.

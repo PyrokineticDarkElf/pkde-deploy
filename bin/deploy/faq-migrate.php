@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Moves a site's FAQs from the pages that hold them into the FAQs post type and its groups (WP-102). Run it with WP-CLI's eval-file, in two steps:
+ * Moves a site's FAQs from the pages that hold them into the FAQs post type and its groups. Run it with WP-CLI's eval-file, in two steps:
  *
  *   plan   (read-only)  lists every page with a kit FAQ block (typed by hand), a Rank Math FAQ block, an accordion headed "FAQ", or a run of core Details blocks under a FAQ heading (directly before them, in their Group or Section, or anywhere earlier in the nearest enclosing Section or top-level Group), with its question count (a synced pattern, a `wp_block` post, is scanned like a page and where it is used is listed); names the theme files that
  *                       look like a hand-coded FAQ (a person moves those); writes the inventory CSV (page slug, block index, block heading, question, the first 120 characters of the answer,

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Pushes one environment's GitHub deploy secrets from ONE 1Password SSH Key item to the repository (MGR-71). The values go straight from `op read` into
+# Pushes one environment's GitHub deploy secrets from ONE 1Password SSH Key item to the repository. The values go straight from `op read` into
 # `gh secret set` through a pipe: never printed, logged, put on a command line, kept in a variable or written to disk.
 #
 #   GH_TOKEN=$(gh auth token --user ACCOUNT) bash push-gh-secrets.sh "<item title or op://vault/item>" <owner/repo> --env staging|prod [--dry-run] [--overwrite]

@@ -124,7 +124,7 @@ for p in "${required[@]}"; do
 done
 
 # Every .htaccess a plugin ships (Wordfence lib/, W3 Total Cache pub/ and ini/, ...) is that plugin's own access denial for its data and
-# include directories. The build tree has them; the artifact must too (an unanchored rsync exclude once dropped all of them: TCS-88).
+# include directories. The build tree has them; the artifact must too (an unanchored rsync exclude once dropped all of them).
 # Skipped when there is no web/app/plugins in the current directory (the check is run from the repo root in CI).
 if [ -d web/app/plugins ] || [ -d web/app/mu-plugins ]; then
     while IFS= read -r p; do

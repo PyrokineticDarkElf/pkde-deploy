@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Relevanssi settings for the shop search, in any environment (from tcs, TCS-76). Lived in pkde-sage-kit/bin until 2026.11.19.10; operator scripts belong here. Idempotent; rebuilds the index at the end.
+ * Relevanssi settings for the shop search, in any environment (from tcs). Lived in pkde-sage-kit/bin until 2026.11.19.10; operator scripts belong here. Idempotent; rebuilds the index at the end.
  *
  * - Products only (the search is a product search), with the short description, the SKU and every product taxonomy that holds words a
  *   customer types: categories, tags, brands and all attribute taxonomies (colour, material ...).

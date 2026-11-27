@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The pure parts of legal-migrate.php (WP-104): which Pages look legal, and whether the approved list is usable. No WordPress needed.
+ * The pure parts of legal-migrate.php: which Pages look legal, and whether the approved list is usable. No WordPress needed.
  */
 const PKDE_LEGAL_TYPES = ['privacy', 'cookies', 'terms', 'returns', 'delivery', 'accessibility', 'modern-slavery', 'other'];
 

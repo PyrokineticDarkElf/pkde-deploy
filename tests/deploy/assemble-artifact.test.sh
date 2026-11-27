@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Test for bin/deploy/assemble-artifact.sh and check-artifact.sh (TCS-88): the artifact keeps every plugin's own .htaccess and leaves out only the
+# Test for bin/deploy/assemble-artifact.sh and check-artifact.sh: the artifact keeps every plugin's own .htaccess and leaves out only the
 # docroot's. A temp tree with fake plugins; no network, nothing outside the temp dir.
 
 set -uo pipefail
@@ -28,7 +28,7 @@ echo 'Require all denied' > "$site/web/app/plugins/wordfence/lib/.htaccess"
 echo 'Require all denied' > "$site/web/app/plugins/w3-total-cache/pub/.htaccess"
 echo 'Require all denied' > "$site/web/app/plugins/w3-total-cache/ini/.htaccess"
 echo 'ROOT RULES' > "$site/web/.htaccess"
-# The theme's folder READMEs are for developers: they must not ship (MGR-67 docs folders).
+# The theme's folder READMEs are for developers: they must not ship (docs folders).
 mkdir -p "$site/web/app/themes/sage/resources/views/vendor/pkde-kit" "$site/web/app/themes/sage/app"
 echo '# readme' > "$site/web/app/themes/sage/resources/views/README.md"
 echo '# readme' > "$site/web/app/themes/sage/resources/views/vendor/pkde-kit/README.md"

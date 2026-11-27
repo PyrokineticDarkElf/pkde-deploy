@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Moves a site's business details into Site details (WP-106, the platform's `site-details` module). Run it with WP-CLI's eval-file, in two steps:
+ * Moves a site's business details into Site details (the platform's `site-details` module). Run it with WP-CLI's eval-file, in two steps:
  *
  *   plan   (read-only)  lists the old `client_*` options the site has (phone, email, address, the five social profiles; read straight from the database, not through the read shim) and
  *                       the Site details field each goes to, then what is already stored. A site that keeps its details somewhere else (cs: the App\Business constants) names a small

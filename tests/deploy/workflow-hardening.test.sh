@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Static guards for the workflows (MGR-67 / RP-85 / cs): every third-party action is pinned by a 40-character commit SHA (a tag can be moved),
+# Static guards for the workflows (/ cs): every third-party action is pinned by a 40-character commit SHA (a tag can be moved),
 # every checkout sets persist-credentials: false (the token must not sit in .git/config while composer and npm run third-party code), every
 # workflow has a top-level permissions block, and the deploy step can pin the server's host key.
 
