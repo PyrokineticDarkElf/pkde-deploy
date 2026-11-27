@@ -55,6 +55,8 @@
 set -euo pipefail
 
 BASE="${1:?usage: activate-release.sh <base_path> <release_timestamp> [keep_count] [all|activate|post]}"
+# No double slashes or trailing slash in the base ("<home>//deploy/staging" made a link target with a double slash).
+BASE="$(printf '%s' "$BASE" | sed 's#//*#/#g; s#\(.\)/$#\1#')"
 RELEASE="${2:?usage: activate-release.sh <base_path> <release_timestamp> [keep_count] [all|activate|post]}"
 KEEP="${3:-5}"
 # One run does everything ("all", the default, also what a manual rollback uses). The deploy workflow runs it as TWO separate
@@ -89,6 +91,10 @@ stage() { echo "[+${SECONDS}s] $*"; }
 RELEASE_DIR="$BASE/releases/$RELEASE"
 SHARED_DIR="$BASE/shared"
 CURRENT_LINK="$BASE/current"
+# Every symlink this script makes is RELATIVE (ln -r: the target is written relative to the link's own folder). 20i blocks absolute symlinks (they answer 403), and a
+# relative link survives the account being moved. `ln -r` needs GNU coreutils 8.16 or later, which 20i has; every link is re-made on every activation, a rollback included,
+# so a release that was deployed with absolute links is repaired when it is activated again.
+rel_ln() { ln -snr "$1" "$2"; }
 # WP-CLI: WP_CLI from the environment wins; otherwise ~/bin/wp (older 20i packages), else the system
 # install at /usr/local/bin/wp (a newer package has no ~/bin).
 if [ -z "${WP_CLI:-}" ]; then
@@ -178,7 +184,7 @@ seed_shared_dir languages
 
 # --- link shared resources into this release ---
 rm -f "$RELEASE_DIR/.env"
-ln -s "$SHARED_DIR/.env" "$RELEASE_DIR/.env"
+rel_ln "$SHARED_DIR/.env" "$RELEASE_DIR/.env"
 
 # opcache.revalidate_path=1 (TPL-172). 20i's PHP-FPM runs OPcache with revalidate_path off: a script cached under the UNRESOLVED path (current/web/index.php)
 # keeps its bytecode, and that bytecode has the OLD release's directory compiled in (__DIR__), so after the symlink switch the web PHP runs the previous release
@@ -215,13 +221,13 @@ if [ -f "$RELEASE_DIR/bin/deploy/waf-prepend.sh" ]; then
 fi
 
 rm -rf "$RELEASE_DIR/web/app/uploads"
-ln -s "$SHARED_DIR/uploads" "$RELEASE_DIR/web/app/uploads"
+rel_ln "$SHARED_DIR/uploads" "$RELEASE_DIR/web/app/uploads"
 
 # EWWW builds placeholder URLs from the content URL (/app/ewww/lazy/...), so the
 # folder has to be reachable over HTTP: a symlink under web/, not a path
 # constant to somewhere outside the docroot.
 rm -rf "$RELEASE_DIR/web/app/ewww"
-ln -s "$SHARED_DIR/ewww" "$RELEASE_DIR/web/app/ewww"
+rel_ln "$SHARED_DIR/ewww" "$RELEASE_DIR/web/app/ewww"
 
 # Translation packs are NOT symlinked into the release: a symlinked web/app/languages made WordPress's language upgrader fail
 # ("The destination directory already exists and could not be removed"). The kit's config/application.php sets WP_LANG_DIR to
@@ -247,7 +253,7 @@ if [ ! -f "$SHARED_DIR/.htaccess" ]; then
     cp "$RELEASE_DIR/web/.htaccess.dist" "$SHARED_DIR/.htaccess"
 fi
 rm -f "$RELEASE_DIR/web/.htaccess"
-ln -s "$SHARED_DIR/.htaccess" "$RELEASE_DIR/web/.htaccess"
+rel_ln "$SHARED_DIR/.htaccess" "$RELEASE_DIR/web/.htaccess"
 
 # drop-ins: W3TC writes advanced-cache.php / object-cache.php into web/app/ when
 # the page / object cache is switched on. They are generated and gitignored, so
@@ -269,9 +275,16 @@ fi
 # Build the new symlink under a temp name, then rename it over the old one.
 # Rename is atomic on the same filesystem, so there is no window where
 # `current` points at nothing or at a half-written target.
-ln -sfn "$RELEASE_DIR" "$CURRENT_LINK.tmp"
+rm -f "$CURRENT_LINK.tmp"
+rel_ln "$RELEASE_DIR" "$CURRENT_LINK.tmp"
 mv -Tf "$CURRENT_LINK.tmp" "$CURRENT_LINK"
-echo "Activated release $RELEASE -> $CURRENT_LINK"
+echo "Activated release $RELEASE -> $CURRENT_LINK ($(readlink "$CURRENT_LINK"))"
+# Nothing may be left that points at an absolute path: the links above and whatever the artifact itself carried (outside vendor/ and the WordPress core folder).
+ABSOLUTE_LINKS="$(find "$CURRENT_LINK/" -maxdepth 5 \( -path "*/vendor" -o -path "*/web/wp" -o -path "*/node_modules" \) -prune -o -type l -lname '/*' -print 2>/dev/null | head -20)" || ABSOLUTE_LINKS=""
+if [ -n "$ABSOLUTE_LINKS" ]; then
+    echo "WARN: absolute symlinks in the release (20i blocks them, a package answers 403):" >&2
+    echo "$ABSOLUTE_LINKS" | sed 's/^/  /' >&2
+fi
 
 # --- reset the WEB opcache: the symlink switch alone does not make PHP run the new code ---
 # 20i's PHP-FPM runs with opcache on and revalidate_path=0, so scripts cached under the UNRESOLVED path
