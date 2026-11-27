@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026.11.19.9
+
+The deploy step copies `activate-release.sh` with rsync over the shell connection instead of scp, on the December line: 2026.11.19.6 and this one change (scp speaks SFTP since OpenSSH 9 and failed on the server with "dest open: No such file or directory"). **Adopt:** the sites on the December train bump the workflow tag in their caller (`deploy.yml`, `audit.yml`) and `pkde/deploy` to 2026.11.19.9. It does not contain 2026.11.19.7, 2026.11.19.8 or anything later.
+- The CI test of the real deploy step now runs it against an sshd that has no SFTP subsystem.
+
 ## 2026.11.19.6
 
 The fresh render check behind the staging gate, a broken home page, and `/.user.ini` (TPL-191, tcs TCS-131; WP-85). **Adopt:** bump `pkde/deploy` and the workflow tags; a staging behind the HTTP gate adds `STAGING_GATE_AUTH` to its shared env file to have the check really run.
