@@ -2,8 +2,9 @@
 #
 # Test for the deploy workflow's "Deploy to the server" step: the REAL step script (cut out of deploy.yml) runs
 # against a throwaway sshd on 127.0.0.1 with a stub activate-release.sh, and the sshd log is counted. The whole
-# step (keyscan aside) must use ONE accepted SSH connection (mkdir, rsync, scp and the activation share a
+# step (keyscan aside) must use ONE accepted SSH connection (mkdir, both rsyncs and the activation share a
 # ControlMaster), the payload and the activation call must arrive, and no master may be left running.
+# The throwaway sshd has NO sftp subsystem, so any scp (OpenSSH 9 speaks SFTP) fails here as it did on 20i: the step must not need SFTP.
 # Skips (exit 0, says so) where sshd, ssh, rsync or a free port are not available. Nothing leaves the machine.
 
 set -uo pipefail
@@ -57,7 +58,6 @@ PubkeyAuthentication yes
 UsePAM no
 StrictModes no
 LogLevel VERBOSE
-Subsystem sftp internal-sftp
 EOF
 "$SSHD" -D -e -f "$T/server/sshd_config" > "$T/server/sshd.log" 2>&1 &
 SSHD_PID=$!

@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026.11.27
+
+The deploy step copies `activate-release.sh` with rsync over the shell connection instead of scp (scp speaks SFTP since OpenSSH 9 and failed on the server with "dest open: No such file or directory" while mkdir and rsync to the same folder worked). **Adopt:** a site takes it by bumping the workflow tag in its caller (`deploy.yml`, and `audit.yml`) and `pkde/deploy` in `composer.json`.
+- The CI test of the real deploy step now runs it against an sshd that has no SFTP subsystem, so a step that needs SFTP fails there.
+
 ## 2026.11.25
 
 A drift WARN while a site's Site details are not migrated (TPL-277). **Adopt:** with kit 2026.11.25.1: bb and tcs now. Never a FAIL.
